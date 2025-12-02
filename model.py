@@ -78,8 +78,15 @@ class Sketch2GraphvizVLM(nn.Module):
         clip_hidden_size = self.clip_model.config.hidden_size  # 1024
         llama_hidden_size = self.llama_model.config.hidden_size  # 4096
 
-        self.clip_to_llama_projection = nn.Linear(
-            in_features=clip_hidden_size, out_features=llama_hidden_size
+        # self.clip_to_llama_projection = nn.Linear(
+        #     in_features=clip_hidden_size, out_features=llama_hidden_size
+        # )
+
+        self.clip_to_llama_projection = nn.Sequential(
+            nn.LayerNorm(clip_hidden_size),
+            nn.Linear(in_features=clip_hidden_size, out_features=llama_hidden_size),
+            nn.GELU(),
+            nn.Linear(in_features=llama_hidden_size, out_features=llama_hidden_size),
         )
 
     def encode_images(self, images: torch.Tensor) -> torch.Tensor:
