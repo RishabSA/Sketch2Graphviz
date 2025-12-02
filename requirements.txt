@@ -1,0 +1,14 @@
+numpy
+pandas
+matplotlib
+scikit-learn
+torch
+tqdm
+transformers
+datasets
+huggingface_hub
+sentencepiece
+python-dotenv
+graphviz
+bitsandbytes
+accelerate
