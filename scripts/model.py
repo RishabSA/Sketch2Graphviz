@@ -1,4 +1,6 @@
 import time
+import os
+from dotenv import load_dotenv
 from PIL import Image
 import torch
 import torch.nn as nn
@@ -7,16 +9,18 @@ from transformers import (
     AutoTokenizer,
     LlamaForCausalLM,
     PreTrainedTokenizerBase,
-    CLIPVisionModel,
-    CLIPImageProcessor,
+    AutoModel,
+    AutoImageProcessor,
     BitsAndBytesConfig,
 )
+from peft import PeftModel
+from huggingface_hub import login
 
 
 class Sketch2GraphvizVLM(nn.Module):
     def __init__(
         self,
-        clip_model_id: str = "openai/clip-vit-large-patch14-336",
+        vit_model_id: str = "openai/clip-vit-large-patch14-336",  # "facebook/dinov2-large", "facebook/dinov3-vitl16-pretrain-lvd1689m"
         llama_model_id: str = "meta-llama/Llama-3.1-8B",
         quantization: str = "4-bit",  # "4-bit", "8-bit", or "16-bit"
         device: torch.device = torch.device(
@@ -34,11 +38,11 @@ class Sketch2GraphvizVLM(nn.Module):
         self.device = device
         self.quantization = quantization
 
-        # CLIP Vision Tower
-        self.clip_processor = CLIPImageProcessor.from_pretrained(clip_model_id)
-        self.clip_model = CLIPVisionModel.from_pretrained(clip_model_id)
-        self.clip_model.to(self.device)
-        # self.clip_model.eval()
+        # ViT Vision Tower
+        self.vit_processor = AutoImageProcessor.from_pretrained(vit_model_id)
+        self.vit_model = AutoModel.from_pretrained(vit_model_id)
+        self.vit_model.to(self.device, dtype=torch.float16)
+        # self.vit_model.eval()
 
         # LLama Decoder
         self.llama_tokenizer = AutoTokenizer.from_pretrained(llama_model_id)
@@ -75,49 +79,50 @@ class Sketch2GraphvizVLM(nn.Module):
                 low_cpu_mem_usage=True,
             )
 
-        clip_hidden_size = self.clip_model.config.hidden_size  # 1024
+        vit_hidden_size = self.vit_model.config.hidden_size  # 1024
         llama_hidden_size = self.llama_model.config.hidden_size  # 4096
 
-        # self.clip_to_llama_projection = nn.Linear(
-        #     in_features=clip_hidden_size, out_features=llama_hidden_size
+        # self.vit_to_llama_projection = nn.Linear(
+        #     in_features=vit_hidden_size, out_features=llama_hidden_size
         # )
 
-        self.clip_to_llama_projection = nn.Sequential(
-            nn.LayerNorm(clip_hidden_size),
-            nn.Linear(in_features=clip_hidden_size, out_features=llama_hidden_size),
+        self.vit_to_llama_projection = nn.Sequential(
+            nn.LayerNorm(vit_hidden_size),
+            nn.Linear(in_features=vit_hidden_size, out_features=llama_hidden_size),
             nn.GELU(),
             nn.Linear(in_features=llama_hidden_size, out_features=llama_hidden_size),
         )
+        self.vit_to_llama_projection.to(device)
 
     def encode_images(self, images: torch.Tensor) -> torch.Tensor:
         # images shape: (batch_size, 3, 336, 336)
 
-        clip_inputs = self.clip_processor(
+        vit_inputs = self.vit_processor(
             images=images,
             return_tensors="pt",
         )
-        pixel_values = clip_inputs["pixel_values"].to(
+        pixel_values = vit_inputs["pixel_values"].to(
             self.device
         )  # shape: (batch_size, 3, 336, 336)
 
-        # Freeze CLIP
+        # Freeze ViT
         with torch.no_grad():
-            clip_outputs = self.clip_model(pixel_values=pixel_values)
+            vit_outputs = self.vit_model(pixel_values=pixel_values)
 
-            clip_last_hidden_state = (
-                clip_outputs.last_hidden_state
-            )  # shape: (batch_size, 1 + num_pathces, d_clip)
+            vit_last_hidden_state = (
+                vit_outputs.last_hidden_state
+            )  # shape: (batch_size, 1 + num_pathces, d_vit)
 
         # Only keep patch tokens
-        clip_patch_tokens = clip_last_hidden_state[
+        vit_patch_tokens = vit_last_hidden_state[
             :, 1:, :
-        ]  # shape: (batch_size, num_pathces, d_clip)
+        ]  # shape: (batch_size, num_pathces, d_vit)
 
-        clip_tokens = self.clip_to_llama_projection(
-            clip_patch_tokens
+        vit_tokens = self.vit_to_llama_projection(
+            vit_patch_tokens
         )  # shape: (batch_size, num_patches, d_llama)
 
-        return clip_tokens
+        return vit_tokens
 
     def forward(
         self,
@@ -127,9 +132,11 @@ class Sketch2GraphvizVLM(nn.Module):
         # images shape: (batch_size, 3, 336, 336)
         # Use forward for training (only returns single Llama output)
 
-        clip_tokens = self.encode_images(
+        vit_tokens = self.encode_images(
             images
         )  # shape: (batch_size, num_patches, d_llama)
+
+        batch_size, num_patches, d_llama = vit_tokens.shape
 
         llama_inputs = self.llama_tokenizer(
             prompts,
@@ -148,14 +155,12 @@ class Sketch2GraphvizVLM(nn.Module):
             llama_input_ids
         )  # shape: (batch_size, seq_len, d_llama)
 
-        # Concatenate CLIP and Llama embeddings along sequence dim
+        # Concatenate ViT and Llama embeddings along sequence dim
         inputs_embeds = torch.cat(
-            [clip_tokens, text_embeds], dim=1
+            [vit_tokens, text_embeds], dim=1
         )  # shape: (batch_size, num_patches + seq_len, d_llama)
 
-        batch_size, num_patches, d_llama = clip_tokens.shape
-
-        clip_attention_mask = torch.ones(
+        vit_attention_mask = torch.ones(
             batch_size,
             num_patches,
             dtype=llama_attention_mask.dtype,
@@ -163,7 +168,7 @@ class Sketch2GraphvizVLM(nn.Module):
         )  # shape: (batch_size, num_patches)
 
         full_attention_mask = torch.cat(
-            [clip_attention_mask, llama_attention_mask], dim=1
+            [vit_attention_mask, llama_attention_mask], dim=1
         )  # shape: (batch_size, num_patches + seq_len)
 
         outputs = self.llama_model(
@@ -186,9 +191,11 @@ class Sketch2GraphvizVLM(nn.Module):
         # Use generate for inference
 
         with torch.inference_mode():
-            clip_tokens = self.encode_images(
+            vit_tokens = self.encode_images(
                 images
             )  # shape: (batch_size, num_patches, d_llama)
+
+            batch_size, num_patches, d_llama = vit_tokens.shape
 
             llama_inputs = self.llama_tokenizer(
                 prompts,
@@ -207,14 +214,12 @@ class Sketch2GraphvizVLM(nn.Module):
                 llama_input_ids
             )  # shape: (batch_size, seq_len, d_llama)
 
-            # Concatenate CLIP and Llama embeddings along sequence dim
+            # Concatenate ViT and Llama embeddings along sequence dim
             inputs_embeds = torch.cat(
-                [clip_tokens, text_embeds], dim=1
+                [vit_tokens, text_embeds], dim=1
             )  # shape: (batch_size, num_patches + seq_len, d_llama)
 
-            batch_size, num_patches, d_llama = clip_tokens.shape
-
-            clip_attention_mask = torch.ones(
+            vit_attention_mask = torch.ones(
                 batch_size,
                 num_patches,
                 dtype=llama_attention_mask.dtype,
@@ -222,7 +227,7 @@ class Sketch2GraphvizVLM(nn.Module):
             )  # shape: (batch_size, num_patches)
 
             full_attention_mask = torch.cat(
-                [clip_attention_mask, llama_attention_mask], dim=1
+                [vit_attention_mask, llama_attention_mask], dim=1
             )  # shape: (batch_size, num_patches + seq_len)
 
             # Generate from combined embeddings
@@ -244,19 +249,19 @@ class Sketch2GraphvizVLM(nn.Module):
         return sequences
 
 
-def get_clip_patch_tokens(
-    clip_model: CLIPVisionModel,
-    clip_processor: CLIPImageProcessor,
+def get_vit_patch_tokens(
+    vit_model: AutoModel,
+    vit_processor: AutoImageProcessor,
     image_path: str,
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ):
     image = Image.open(image_path).convert("RGB")
-    inputs = clip_processor(images=image, return_tensors="pt")
+    inputs = vit_processor(images=image, return_tensors="pt")
     pixel_values = inputs.pixel_values.to(device)  # shape: (1, 3, 336, 336)
 
-    # Forward pass through CLIP vision tower
+    # Forward pass through ViT vision tower
     with torch.inference_mode():
-        outputs = clip_model(pixel_values=pixel_values)
+        outputs = vit_model(pixel_values=pixel_values)
         # last_hidden_state: [batch, 1 + num_patches, hidden_dim]
         last_hidden = (
             outputs.last_hidden_state
@@ -330,7 +335,51 @@ def generate_model_response(
     return sequences[0]
 
 
+def print_num_params(model: nn.Module) -> None:
+    total = sum(param.numel() for param in model.parameters())
+    trainable = sum(
+        param.numel() for param in model.parameters() if param.requires_grad
+    )
+
+    print(
+        f"The model has {total:,} total parameters | {trainable:,} trainable parameters | Percent trainable: ({((trainable / total) * 100):.2f}%)"
+    )
+
+
+def load_sketch2graph_vlm(
+    model: Sketch2GraphvizVLM,
+    model_load_dir: str | None = None,
+    epoch_load: int | None = None,
+    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+) -> Sketch2GraphvizVLM:
+    assert (
+        model_load_dir is not None and epoch_load is not None
+    ), "You must pass in values for model_load_dir and epoch_load"
+
+    # Load projector weights
+    proj_path = os.path.join(model_load_dir, f"epoch_{epoch_load}_proj.pt")
+    model.vit_to_llama_projection.load_state_dict(
+        torch.load(proj_path, map_location=device)
+    )
+
+    # Load LoRA adapter
+    lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_lora")
+    model.llama_model = PeftModel.from_pretrained(model.llama_model, lora_dir)
+
+    model.vit_model.to(device)
+    model.vit_to_llama_projection.to(device)
+    model.device = device
+
+    model.eval()
+
+    return model
+
+
 if __name__ == "__main__":
+    load_dotenv()
+    hf_token = os.getenv("HF_TOKEN")
+    login(token=hf_token)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     prompt = (
@@ -339,11 +388,12 @@ if __name__ == "__main__":
     )
 
     model = Sketch2GraphvizVLM(
-        clip_model_id="openai/clip-vit-large-patch14-336",
+        vit_model_id="openai/clip-vit-large-patch14-336",
         llama_model_id="meta-llama/Llama-3.1-8B",
         quantization="4-bit",
         device=device,
     )
+    print_num_params(model)
 
     graphviz_image = Image.open("graphs/graph_1.png").convert("RGB")
     graphviz_image_tensor = (
@@ -360,18 +410,18 @@ if __name__ == "__main__":
 
     print(sequences[0])
 
-    # clip_model = CLIPVisionModel.from_pretrained(
+    # vit_model = AutoModel.from_pretrained(
     #     "openai/clip-vit-large-patch14-336"
     # ).to(device)
-    # clip_model.eval()
+    # vit_model.eval()
 
-    # clip_processor = CLIPImageProcessor.from_pretrained(
+    # vit_processor = AutoImageProcessor.from_pretrained(
     #     "openai/clip-vit-large-patch14-336"
     # )
 
-    # cls, patches = get_clip_patch_tokens(
-    #     clip_model=clip_model,
-    #     clip_processor=clip_processor,
+    # cls, patches = get_vit_patch_tokens(
+    #     vit_model=vit_model,
+    #     vit_processor=vit_processor,
     #     image_path="graphs/graph_1.png",
     #     device=device,
     # )

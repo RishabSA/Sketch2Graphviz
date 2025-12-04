@@ -3,12 +3,14 @@ pandas
 matplotlib
 scikit-learn
 torch
+torchvision
 tqdm
 transformers
 datasets
 huggingface_hub
-sentencepiece
 python-dotenv
 graphviz
 bitsandbytes
 accelerate
+peft
+Pillow

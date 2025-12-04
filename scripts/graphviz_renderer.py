@@ -18,6 +18,7 @@ def render_graphviz_dot_code(
         format="png",
         view=False,
         cleanup=True,
+        quiet=True,
     )
 
     if size is not None:
