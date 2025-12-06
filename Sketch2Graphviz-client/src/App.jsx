@@ -12,6 +12,7 @@ import {
 } from "react-feather";
 import { Bounce, ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { GraphvizRenderer } from "./components/GraphvizRenderer";
 
 function App() {
 	const [theme, setTheme] = useState(() => {
@@ -288,9 +289,7 @@ function App() {
 				</div>
 
 				<div className="w-full flex justify-center">
-					<div className="pb-4 w-full md:w-4/5 h-fit flex flex-col justify-center items-center border-neutral-200 dark:border-neutral-800 border-2 rounded-xl">
-						<div className="text-center items-center p-4 pt-8 space-y-1"></div>
-					</div>
+					<GraphvizRenderer />
 				</div>
 			</div>
 		</>

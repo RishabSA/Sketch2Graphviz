@@ -26,15 +26,21 @@ def evaluate_vlm(
             torch.load(proj_path, map_location=device)
         )
 
-        # Load LoRA adapter
-        lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_lora")
-        model.llama_model = PeftModel.from_pretrained(model.llama_model, lora_dir)
+        # Load Llama LoRA adapter
+        llama_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_llama_lora")
+        model.llama_model = PeftModel.from_pretrained(model.llama_model, llama_lora_dir)
 
-        model.vit_model.to(device)
+        # Load ViT LoRA adapter
+        vit_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_vit_lora")
+        model.vit_model = PeftModel.from_pretrained(model.vit_model, vit_lora_dir)
+
         model.vit_to_llama_projection.to(device)
+        model.llama_model.to(device)
+        model.vit_model.to(device)
         model.device = device
 
     model.eval()
+
     test_loss = 0.0
 
     progress_bar = tqdm(iterator, desc=description)
@@ -70,7 +76,7 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    batch_size = 16
+    batch_size = 4
 
     train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
         batch_size=batch_size,
@@ -84,6 +90,10 @@ if __name__ == "__main__":
         quantization="4-bit",
         device=device,
     ).to(device)
+
+    model.llama_model.gradient_checkpointing_enable()
+    model.llama_model.config.use_cache = False
+    model.llama_model.enable_input_require_grads()
 
     instruction = (
         "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "

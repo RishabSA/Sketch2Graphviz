@@ -11,6 +11,7 @@ from transformers import (
     PreTrainedTokenizerBase,
     AutoModel,
     AutoImageProcessor,
+    CLIPVisionModel,
     BitsAndBytesConfig,
 )
 from peft import PeftModel
@@ -40,7 +41,12 @@ class Sketch2GraphvizVLM(nn.Module):
 
         # ViT Vision Tower
         self.vit_processor = AutoImageProcessor.from_pretrained(vit_model_id)
-        self.vit_model = AutoModel.from_pretrained(vit_model_id)
+
+        if "clip" in vit_model_id:
+            self.vit_model = CLIPVisionModel.from_pretrained(vit_model_id)
+        else:
+            self.vit_model = AutoModel.from_pretrained(vit_model_id)
+
         self.vit_model.to(self.device, dtype=torch.float16)
         # self.vit_model.eval()
 
@@ -93,6 +99,7 @@ class Sketch2GraphvizVLM(nn.Module):
             nn.Linear(in_features=llama_hidden_size, out_features=llama_hidden_size),
         )
         self.vit_to_llama_projection.to(device)
+        # self.vit_to_llama_projection.to(device, dtype=torch.float16)
 
     def encode_images(self, images: torch.Tensor) -> torch.Tensor:
         # images shape: (batch_size, 3, 336, 336)
@@ -101,17 +108,18 @@ class Sketch2GraphvizVLM(nn.Module):
             images=images,
             return_tensors="pt",
         )
+
+        llama_dtype = next(self.llama_model.parameters()).dtype
+
         pixel_values = vit_inputs["pixel_values"].to(
-            self.device
+            self.device, dtype=llama_dtype
         )  # shape: (batch_size, 3, 336, 336)
 
-        # Freeze ViT
-        with torch.no_grad():
-            vit_outputs = self.vit_model(pixel_values=pixel_values)
+        vit_outputs = self.vit_model(pixel_values=pixel_values)
 
-            vit_last_hidden_state = (
-                vit_outputs.last_hidden_state
-            )  # shape: (batch_size, 1 + num_pathces, d_vit)
+        vit_last_hidden_state = (
+            vit_outputs.last_hidden_state
+        )  # shape: (batch_size, 1 + num_pathces, d_vit)
 
         # Only keep patch tokens
         vit_patch_tokens = vit_last_hidden_state[
@@ -183,7 +191,7 @@ class Sketch2GraphvizVLM(nn.Module):
         self,
         images: torch.Tensor,
         prompts: list[str],
-        max_new_tokens: int = 1000,
+        max_new_tokens: int = 1024,
         do_sample: bool = True,
         temperature: float = 1.0,
     ) -> list[str]:
@@ -362,12 +370,17 @@ def load_sketch2graph_vlm(
         torch.load(proj_path, map_location=device)
     )
 
-    # Load LoRA adapter
-    lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_lora")
-    model.llama_model = PeftModel.from_pretrained(model.llama_model, lora_dir)
+    # Load Llama LoRA adapter
+    llama_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_llama_lora")
+    model.llama_model = PeftModel.from_pretrained(model.llama_model, llama_lora_dir)
 
-    model.vit_model.to(device)
+    # Load ViT LoRA adapter
+    vit_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_vit_lora")
+    model.vit_model = PeftModel.from_pretrained(model.vit_model, vit_lora_dir)
+
     model.vit_to_llama_projection.to(device)
+    model.llama_model.to(device)
+    model.vit_model.to(device)
     model.device = device
 
     model.eval()
@@ -393,6 +406,11 @@ if __name__ == "__main__":
         quantization="4-bit",
         device=device,
     )
+
+    model.llama_model.gradient_checkpointing_enable()
+    model.llama_model.config.use_cache = False
+    model.llama_model.enable_input_require_grads()
+
     print_num_params(model)
 
     graphviz_image = Image.open("graphs/graph_1.png").convert("RGB")
@@ -403,7 +421,7 @@ if __name__ == "__main__":
     sequences = model.generate(
         images=graphviz_image_tensor,
         prompts=[prompt],
-        max_new_tokens=1000,
+        max_new_tokens=1024,
         do_sample=True,
         temperature=1.0,
     )

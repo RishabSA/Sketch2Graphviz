@@ -2,9 +2,9 @@ import os
 from dotenv import load_dotenv
 import torch
 from torch.utils.data import DataLoader
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from tqdm.auto import tqdm
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
 from huggingface_hub import login
 
 from scripts.model import Sketch2GraphvizVLM, print_num_params
@@ -13,7 +13,7 @@ from scripts.eval import evaluate_vlm
 
 
 def add_lora_to_llama(
-    model: Sketch2GraphvizVLM, rank: int = 64, alpha: int = 128, dropout: float = 0.05
+    model: Sketch2GraphvizVLM, rank: int = 16, alpha: int = 32, dropout: float = 0.05
 ) -> Sketch2GraphvizVLM:
     llama_model = model.llama_model
 
@@ -30,17 +30,38 @@ def add_lora_to_llama(
         "down_proj",
     ]
 
-    lora_config = LoraConfig(
+    llama_lora_config = LoraConfig(
         r=rank,
         lora_alpha=alpha,
         target_modules=target_modules,
         lora_dropout=dropout,
         bias="none",
-        task_type="CAUSAL_LM",
+        task_type=TaskType.CAUSAL_LM,
     )
 
-    llama_model = get_peft_model(llama_model, lora_config)
+    llama_model = get_peft_model(llama_model, llama_lora_config)
     model.llama_model = llama_model
+
+    return model
+
+
+def add_lora_to_vit(
+    model: Sketch2GraphvizVLM, rank: int = 16, alpha: int = 32, dropout: float = 0.05
+) -> Sketch2GraphvizVLM:
+    vit_model = model.vit_model
+
+    target_modules = ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"]
+
+    vit_lora_config = LoraConfig(
+        r=rank,
+        lora_alpha=alpha,
+        target_modules=target_modules,
+        lora_dropout=dropout,
+        bias="none",
+    )
+
+    vit_model = get_peft_model(vit_model, vit_lora_config)
+    model.vit_model = vit_model
 
     return model
 
@@ -50,6 +71,8 @@ def finetune_vlm_lora(
     train_dataloader: DataLoader,
     val_dataloader: DataLoader,
     instruction: str,
+    rank: int = 16,
+    lr_vit: float = 1e-5,
     lr_lora: float = 2e-4,
     lr_proj: float = 1e-4,
     weight_decay: float = 1e-2,
@@ -58,15 +81,16 @@ def finetune_vlm_lora(
     model_save_dir: str = "checkpoints",
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> tuple[Sketch2GraphvizVLM, list[float], list[float]]:
-    # Freeze ViT
-    for p in model.vit_model.parameters():
-        p.requires_grad = False
+    # Train ViT
+    for param in model.vit_model.parameters():
+        param.requires_grad = True
 
     # Train MLP projection
-    for p in model.vit_to_llama_projection.parameters():
-        p.requires_grad = True
+    for param in model.vit_to_llama_projection.parameters():
+        param.requires_grad = True
 
-    model = add_lora_to_llama(model, rank=64, alpha=128, dropout=0.05)
+    model = add_lora_to_llama(model, rank=rank, alpha=(2 * rank), dropout=0.05)
+    model = add_lora_to_vit(model, rank=rank, alpha=(2 * rank), dropout=0.05)
     print_num_params(model)
 
     # Optimizer over trainable params
@@ -74,12 +98,13 @@ def finetune_vlm_lora(
 
     optimizer = torch.optim.AdamW(
         [
+            {"params": model.vit_model.parameters(), "lr": lr_vit},
             {"params": model.vit_to_llama_projection.parameters(), "lr": lr_proj},
             {
                 "params": [
                     param
                     for name, param in model.named_parameters()
-                    if param.requires_grad and "vit_to_llama_projection" not in name
+                    if param.requires_grad and "llama_model" in name and "lora_" in name
                 ],
                 "lr": lr_lora,
             },
@@ -133,6 +158,17 @@ def finetune_vlm_lora(
                 loss=f"{loss_val:.6f}",
             )
 
+            del (
+                images,
+                graphviz_code,
+                inputs_embeds,
+                attention_mask,
+                labels,
+                outputs,
+                loss,
+            )
+            torch.cuda.empty_cache()
+
         epoch_train_loss = train_loss / len(train_dataloader)
 
         epoch_val_loss = evaluate_vlm(
@@ -156,7 +192,12 @@ def finetune_vlm_lora(
 
         # Save LoRA for LLaMA
         model.llama_model.save_pretrained(
-            os.path.join(model_save_dir, f"epoch_{epoch + 1}_lora")
+            os.path.join(model_save_dir, f"epoch_{epoch + 1}_llama_lora")
+        )
+
+        # Save LoRA for ViT
+        model.vit_model.save_pretrained(
+            os.path.join(model_save_dir, f"epoch_{epoch + 1}_vit_lora")
         )
 
         # Save ViT to Llama projector
@@ -175,7 +216,9 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    batch_size = 16
+    batch_size = 4
+
+    lr_vit = 1e-5
     lr_lora = 2e-4
     lr_proj = 1e-4
     weight_decay = 1e-2
@@ -194,16 +237,24 @@ if __name__ == "__main__":
         device=device,
     ).to(device)
 
+    model.llama_model.gradient_checkpointing_enable()
+    model.llama_model.config.use_cache = False
+    model.llama_model.enable_input_require_grads()
+
     instruction = (
         "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "
         "Given the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
     )
+
+    lora_rank = 16
 
     model, train_losses, val_losses = finetune_vlm_lora(
         model=model,
         train_dataloader=train_dataloader,
         val_dataloader=val_dataloader,
         instruction=instruction,
+        rank=lora_rank,
+        lr_vit=lr_vit,
         lr_lora=lr_lora,
         lr_proj=lr_proj,
         weight_decay=weight_decay,

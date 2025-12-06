@@ -56,7 +56,7 @@ class GraphvizImageCodeDataset(Dataset):
                     dot_code=graphviz_dot_code,
                     name=f"{split_name}_{i}",
                     folder=self.split_dir,
-                    size=None,
+                    size=image_size,
                 )
 
                 self.valid_indices.append(i)
@@ -135,7 +135,7 @@ def get_graphviz_hf_dataloaders(
         "DiagramAgent/DiagramGenBenchmark", "DiagramGeneration"
     )
     diagram_gen_generation = diagram_gen_generation.rename_column(
-        "reference_answer", "graphviz_code"
+        "reference", "graphviz_code"
     )
     diagram_gen_generation = diagram_gen_generation["test"].filter(
         lambda x: "digraph" in x["graphviz_code"]
@@ -249,6 +249,7 @@ def make_inputs_and_labels(
         prompts,
         padding=True,
         truncation=True,
+        max_length=1024,
         return_tensors="pt",
     ).to(model.device)
 
@@ -293,9 +294,11 @@ def make_inputs_and_labels(
 
 
 if __name__ == "__main__":
-    batch_size = 16
+    batch_size = 4
 
     train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
-        batch_size=batch_size
+        batch_size=batch_size,
+        root_dir="graphviz_rendered",
+        image_size=(336, 336),
     )
     print(len(train_dataloader), len(val_dataloader), len(test_dataloader))
