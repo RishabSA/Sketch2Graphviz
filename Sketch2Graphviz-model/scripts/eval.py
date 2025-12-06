@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 import torch
 from torch.utils.data import DataLoader
+from torch.amp import autocast
 from tqdm.auto import tqdm
 from peft import PeftModel
 from huggingface_hub import login
@@ -49,21 +50,23 @@ def evaluate_vlm(
         images = batch["images"].to(device)
         graphviz_code = batch["graphviz_code"]
 
-        inputs_embeds, attention_mask, labels = make_inputs_and_labels(
-            model=model,
-            images=images,
-            graphviz_code=graphviz_code,
-            instruction=instruction,
-        )
-
-        with torch.inference_mode():
-            outputs = model.llama_model(
-                inputs_embeds=inputs_embeds,
-                attention_mask=attention_mask,
-                labels=labels,
+        with autocast(device_type="cuda", dtype=torch.float16):
+            inputs_embeds, attention_mask, labels = make_inputs_and_labels(
+                model=model,
+                images=images,
+                graphviz_code=graphviz_code,
+                instruction=instruction,
             )
 
-        loss = outputs.loss
+            with torch.inference_mode():
+                outputs = model.llama_model(
+                    inputs_embeds=inputs_embeds,
+                    attention_mask=attention_mask,
+                    labels=labels,
+                )
+
+            loss = outputs.loss
+
         test_loss += loss.item()
 
     return test_loss / len(iterator)

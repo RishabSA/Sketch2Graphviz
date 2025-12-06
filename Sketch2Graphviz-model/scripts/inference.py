@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from PIL import Image
 import torch
+from torch.amp import autocast
 from torchvision import transforms
 from huggingface_hub import login
 
@@ -41,7 +42,7 @@ def predict_graphviz_dot(
     else:
         raise TypeError("image must be a file path, Image.Image, or torch.Tensor")
 
-    with torch.inference_mode():
+    with autocast(device_type="cuda", dtype=torch.float16), torch.inference_mode():
         sequences = model.generate(
             images=img,
             prompts=[instruction],

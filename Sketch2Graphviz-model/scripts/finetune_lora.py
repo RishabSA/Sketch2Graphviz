@@ -167,7 +167,26 @@ def finetune_vlm_lora(
                 outputs,
                 loss,
             )
+
             torch.cuda.empty_cache()
+
+        os.makedirs(model_save_dir, exist_ok=True)
+
+        # Save LoRA for LLaMA
+        model.llama_model.save_pretrained(
+            os.path.join(model_save_dir, f"epoch_{epoch + 1}_llama_lora")
+        )
+
+        # Save LoRA for ViT
+        model.vit_model.save_pretrained(
+            os.path.join(model_save_dir, f"epoch_{epoch + 1}_vit_lora")
+        )
+
+        # Save ViT to Llama projector
+        torch.save(
+            model.vit_to_llama_projection.state_dict(),
+            os.path.join(model_save_dir, f"epoch_{epoch + 1}_proj.pt"),
+        )
 
         epoch_train_loss = train_loss / len(train_dataloader)
 
@@ -186,24 +205,6 @@ def finetune_vlm_lora(
 
         print(
             f"Epoch {epoch + 1} | Train loss: {epoch_train_loss:.6f} | Val loss: {epoch_val_loss:.6f}"
-        )
-
-        os.makedirs(model_save_dir, exist_ok=True)
-
-        # Save LoRA for LLaMA
-        model.llama_model.save_pretrained(
-            os.path.join(model_save_dir, f"epoch_{epoch + 1}_llama_lora")
-        )
-
-        # Save LoRA for ViT
-        model.vit_model.save_pretrained(
-            os.path.join(model_save_dir, f"epoch_{epoch + 1}_vit_lora")
-        )
-
-        # Save ViT to Llama projector
-        torch.save(
-            model.vit_to_llama_projection.state_dict(),
-            os.path.join(model_save_dir, f"epoch_{epoch + 1}_proj.pt"),
         )
 
     return model, train_losses, val_losses
