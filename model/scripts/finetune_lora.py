@@ -129,7 +129,7 @@ def finetune_vlm_lora(
             optimizer.zero_grad()
 
             with autocast(device_type="cuda", dtype=torch.float16):
-                inputs_embeds, attention_mask, labels = make_inputs_and_labels(
+                inputs_embeds, full_attention_mask, labels = make_inputs_and_labels(
                     model=model,
                     images=images,
                     graphviz_code=graphviz_code,
@@ -138,7 +138,7 @@ def finetune_vlm_lora(
 
                 outputs = model.llama_model(
                     inputs_embeds=inputs_embeds,
-                    attention_mask=attention_mask,
+                    attention_mask=full_attention_mask,
                     labels=labels,
                 )
                 loss = outputs.loss
@@ -228,13 +228,14 @@ if __name__ == "__main__":
     train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
         batch_size=batch_size,
         root_dir="graphviz_rendered",
-        image_size=(336, 336),
+        image_size=None,  # (336, 336)
     )
 
     model = Sketch2GraphvizVLM(
         vit_model_id="openai/clip-vit-large-patch14-336",
         llama_model_id="meta-llama/Llama-3.1-8B",
         quantization="4-bit",
+        tile_images=True,
         device=device,
     ).to(device)
 

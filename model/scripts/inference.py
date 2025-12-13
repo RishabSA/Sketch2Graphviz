@@ -66,6 +66,7 @@ if __name__ == "__main__":
         vit_model_id="openai/clip-vit-large-patch14-336",
         llama_model_id="meta-llama/Llama-3.1-8B",
         quantization="4-bit",
+        tile_images=True,
         device=device,
     )
 

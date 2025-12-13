@@ -1,9 +1,11 @@
 import time
 import os
+import math
 from dotenv import load_dotenv
 from PIL import Image
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision import transforms
 from transformers import (
     AutoTokenizer,
@@ -18,12 +20,38 @@ from peft import PeftModel
 from huggingface_hub import login
 
 
+def get_image_tiles(
+    image: torch.Tensor, tile_size: int = 336, stride: int | None = None
+) -> list:
+    if stride is None:
+        stride = tile_size
+
+    C, H, W = image.shape
+
+    # Pad to multiple of tile_size so we don't miss edges
+    pad_h = (math.ceil(H / tile_size) * tile_size) - H
+    pad_w = (math.ceil(W / tile_size) * tile_size) - W
+
+    # pad = (left, right, top, bottom)
+    image_padded = F.pad(image, (0, pad_w, 0, pad_h), value=1.0)  # white padding
+    _, H_pad, W_pad = image_padded.shape
+
+    tiles = []
+    for top in range(0, H_pad - tile_size + 1, stride):
+        for left in range(0, W_pad - tile_size + 1, stride):
+            crop = image_padded[:, top : top + tile_size, left : left + tile_size]
+            tiles.append(crop)
+
+    return tiles
+
+
 class Sketch2GraphvizVLM(nn.Module):
     def __init__(
         self,
         vit_model_id: str = "openai/clip-vit-large-patch14-336",  # "facebook/dinov2-large", "facebook/dinov3-vitl16-pretrain-lvd1689m"
         llama_model_id: str = "meta-llama/Llama-3.1-8B",
         quantization: str = "4-bit",  # "4-bit", "8-bit", or "16-bit"
+        tile_images: bool = True,
         device: torch.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         ),
@@ -38,6 +66,7 @@ class Sketch2GraphvizVLM(nn.Module):
 
         self.device = device
         self.quantization = quantization
+        self.tile_images = tile_images
 
         # ViT Vision Tower
         self.vit_processor = AutoImageProcessor.from_pretrained(vit_model_id)
@@ -103,34 +132,121 @@ class Sketch2GraphvizVLM(nn.Module):
 
     def encode_images(self, images: torch.Tensor) -> torch.Tensor:
         # images shape: (batch_size, 3, 336, 336)
-
-        vit_inputs = self.vit_processor(
-            images=images,
-            return_tensors="pt",
-        )
-
         llama_dtype = next(self.llama_model.parameters()).dtype
 
-        pixel_values = vit_inputs["pixel_values"].to(
-            self.device, dtype=llama_dtype
-        )  # shape: (batch_size, 3, 336, 336)
+        if self.tile_images:
+            batch_size = images.shape[0]
+            tile_size = 336
 
-        vit_outputs = self.vit_model(pixel_values=pixel_values)
+            all_vit_tokens = []
+            seq_lens = []
 
-        vit_last_hidden_state = (
-            vit_outputs.last_hidden_state
-        )  # shape: (batch_size, 1 + num_pathces, d_vit)
+            for batch in range(batch_size):
+                img = images[batch]  # shape: (3, H, W)
 
-        # Only keep patch tokens
-        vit_patch_tokens = vit_last_hidden_state[
-            :, 1:, :
-        ]  # shape: (batch_size, num_pathces, d_vit)
+                # Tile the image into (3, tile_size, tile_size)
+                tiles = get_image_tiles(image=img, tile_size=tile_size, stride=None)
+                num_tiles = len(tiles)
 
-        vit_tokens = self.vit_to_llama_projection(
-            vit_patch_tokens
-        )  # shape: (batch_size, num_patches, d_llama)
+                # Run all tiles through the ViT processor and ViT model
+                vit_inputs = self.vit_processor(images=tiles, return_tensors="pt")
 
-        return vit_tokens
+                pixel_values = vit_inputs["pixel_values"].to(
+                    self.device, dtype=llama_dtype
+                )  # shape: (num_tiles, 3, 336, 336)
+
+                vit_outputs = self.vit_model(pixel_values=pixel_values)
+
+                vit_last_hidden_state = (
+                    vit_outputs.last_hidden_state
+                )  # shape: (num_tiles, 1 + num_patches, d_vit)
+
+                # Only keep patch tokens (drop CLS token)
+                vit_patch_tokens = vit_last_hidden_state[
+                    :, 1:, :
+                ]  # shape: (num_tiles, num_patches, d_vit)
+
+                # Flatten tiles and patches
+                num_tiles, num_patches, d_vit = vit_patch_tokens.shape
+
+                vit_patch_tokens = vit_patch_tokens.reshape(
+                    num_tiles * num_patches, d_vit
+                )  # (num_tiles * num_patches, d_vit)
+
+                # project to LLaMA hidden size
+                vit_tokens = self.vit_to_llama_projection(
+                    vit_patch_tokens.to(dtype=llama_dtype)
+                )  # (num_tiles * num_patches, d_llama)
+
+                all_vit_tokens.append(vit_tokens)
+                seq_lens.append(vit_tokens.shape[0])
+
+            # Pad to max sequence length across batch so we can form a proper tensor
+            max_seq_len = max(seq_lens)
+            d_llama = all_vit_tokens[0].shape[1]
+
+            vit_tokens = torch.zeros(
+                batch_size,
+                max_seq_len,
+                d_llama,
+                device=self.device,
+                dtype=llama_dtype,
+            )
+
+            vit_attention_mask = torch.zeros(
+                batch_size,
+                max_seq_len,
+                device=self.device,
+                dtype=torch.long,
+            )
+
+            for batch in range(batch_size):
+                seq_len = all_vit_tokens[batch].shape[0]  # num_tiles * num_patches
+
+                vit_tokens[batch, :seq_len, :] = all_vit_tokens[batch]
+                vit_attention_mask[batch, :seq_len] = 1
+
+            return (
+                vit_tokens,
+                vit_attention_mask,
+            )  # shapes: (batch_size, max_seq_len, d_llama), (batch_size, max_seq_len)
+
+        else:
+            vit_inputs = self.vit_processor(
+                images=images,
+                return_tensors="pt",
+            )
+
+            pixel_values = vit_inputs["pixel_values"].to(
+                self.device, dtype=llama_dtype
+            )  # shape: (batch_size, 3, 336, 336)
+
+            vit_outputs = self.vit_model(pixel_values=pixel_values)
+
+            vit_last_hidden_state = (
+                vit_outputs.last_hidden_state
+            )  # shape: (batch_size, 1 + num_patches, d_vit)
+
+            # Only keep patch tokens (drop CLS token)
+            vit_patch_tokens = vit_last_hidden_state[
+                :, 1:, :
+            ]  # shape: (batch_size, num_patches, d_vit)
+
+            vit_tokens = self.vit_to_llama_projection(
+                vit_patch_tokens
+            )  # shape: (batch_size, num_patches, d_llama)
+
+            vit_attention_mask = torch.ones(
+                batch_size,
+                vit_tokens.shape[1],
+                device=self.device,
+                dtype=torch.long,
+            )
+
+            return (
+                vit_tokens,
+                vit_attention_mask,
+            )  # shapes: (batch_size, num_patches, d_llama), (batch_size, num_patches)
 
     def forward(
         self,
@@ -140,11 +256,10 @@ class Sketch2GraphvizVLM(nn.Module):
         # images shape: (batch_size, 3, 336, 336)
         # Use forward for training (only returns single Llama output)
 
-        vit_tokens = self.encode_images(
-            images
-        )  # shape: (batch_size, num_patches, d_llama)
-
-        batch_size, num_patches, d_llama = vit_tokens.shape
+        vit_tokens, vit_attention_mask = self.encode_images(images)
+        # shapes: (batch_size, num_patches, d_llama), (batch_size, num_patches)
+        # OR (depending on tiling)
+        # shapes: (batch_size, max_seq_len, d_llama), (batch_size, max_seq_len)
 
         llama_inputs = self.llama_tokenizer(
             prompts,
@@ -166,23 +281,16 @@ class Sketch2GraphvizVLM(nn.Module):
         # Concatenate ViT and Llama embeddings along sequence dim
         inputs_embeds = torch.cat(
             [vit_tokens, text_embeds], dim=1
-        )  # shape: (batch_size, num_patches + seq_len, d_llama)
-
-        vit_attention_mask = torch.ones(
-            batch_size,
-            num_patches,
-            dtype=llama_attention_mask.dtype,
-            device=self.device,
-        )  # shape: (batch_size, num_patches)
+        )  # shape: (batch_size, num_vit_tokens + seq_len, d_llama)
 
         full_attention_mask = torch.cat(
             [vit_attention_mask, llama_attention_mask], dim=1
-        )  # shape: (batch_size, num_patches + seq_len)
+        )  # shape: (batch_size, num_vit_tokens + seq_len)
 
         outputs = self.llama_model(
             inputs_embeds=inputs_embeds,
             attention_mask=full_attention_mask,
-            # for training you'd also pass labels aligned to text tokens
+            # labels=labels,
         )
 
         return outputs
@@ -199,11 +307,10 @@ class Sketch2GraphvizVLM(nn.Module):
         # Use generate for inference
 
         with torch.inference_mode():
-            vit_tokens = self.encode_images(
-                images
-            )  # shape: (batch_size, num_patches, d_llama)
-
-            batch_size, num_patches, d_llama = vit_tokens.shape
+            vit_tokens, vit_attention_mask = self.encode_images(images)
+            # shapes: (batch_size, num_patches, d_llama), (batch_size, num_patches)
+            # OR (depending on tiling)
+            # shapes: (batch_size, max_seq_len, d_llama), (batch_size, max_seq_len)
 
             llama_inputs = self.llama_tokenizer(
                 prompts,
@@ -225,18 +332,11 @@ class Sketch2GraphvizVLM(nn.Module):
             # Concatenate ViT and Llama embeddings along sequence dim
             inputs_embeds = torch.cat(
                 [vit_tokens, text_embeds], dim=1
-            )  # shape: (batch_size, num_patches + seq_len, d_llama)
-
-            vit_attention_mask = torch.ones(
-                batch_size,
-                num_patches,
-                dtype=llama_attention_mask.dtype,
-                device=self.device,
-            )  # shape: (batch_size, num_patches)
+            )  # shape: (batch_size, num_vit_tokens + seq_len, d_llama)
 
             full_attention_mask = torch.cat(
                 [vit_attention_mask, llama_attention_mask], dim=1
-            )  # shape: (batch_size, num_patches + seq_len)
+            )  # shape: (batch_size, num_vit_tokens + seq_len)
 
             # Generate from combined embeddings
             generated = self.llama_model.generate(
@@ -404,6 +504,7 @@ if __name__ == "__main__":
         vit_model_id="openai/clip-vit-large-patch14-336",
         llama_model_id="meta-llama/Llama-3.1-8B",
         quantization="4-bit",
+        tile_images=True,
         device=device,
     )
 

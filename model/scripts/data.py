@@ -237,11 +237,12 @@ def make_inputs_and_labels(
     graphviz_code: list[str],
     instruction: str,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    vit_tokens = model.encode_images(
-        images
-    )  # shape: (batch_size, num_patches, d_llama)
+    vit_tokens, vit_attention_mask = model.encode_images(images)
+    # shapes: (batch_size, num_patches, d_llama), (batch_size, num_patches)
+    # OR (depending on tiling)
+    # shapes: (batch_size, max_seq_len, d_llama), (batch_size, max_seq_len)
 
-    batch_size, num_patches, d_llama = vit_tokens.shape
+    batch_size, num_vit_tokens, d_llama = vit_tokens.shape
 
     prompts = [instruction + code for code in graphviz_code]
 
@@ -249,7 +250,7 @@ def make_inputs_and_labels(
         prompts,
         padding=True,
         truncation=True,
-        max_length=1024,
+        # max_length=1024,
         return_tensors="pt",
     ).to(model.device)
 
@@ -266,29 +267,32 @@ def make_inputs_and_labels(
     # Concatenate ViT and Llama embeddings along sequence dim
     inputs_embeds = torch.cat(
         [vit_tokens, text_embeds], dim=1
-    )  # shape: (batch_size, num_patches + seq_len, d_llama)
-
-    vit_attention_mask = torch.ones(
-        batch_size,
-        num_patches,
-        dtype=llama_attention_mask.dtype,
-        device=model.device,
-    )  # shape: (batch_size, num_patches)
+    )  # shape: (batch_size, num_vit_tokens + seq_len, d_llama)
 
     full_attention_mask = torch.cat(
         [vit_attention_mask, llama_attention_mask], dim=1
-    )  # shape: (batch_size, num_patches + seq_len)
+    )  # shape: (batch_size, num_vit_tokens + seq_len)
 
     # Use -100 for visual tokens
     labels = torch.full(
-        (batch_size, num_patches + llama_input_ids.shape[1]),
+        (batch_size, num_vit_tokens + llama_input_ids.shape[1]),
         -100,
         dtype=torch.long,
         device=model.device,
+    )  # shape: (batch_size, num_vit_tokens + seq_len)
+
+    # Fill with text tokens (ViT tokens are -100)
+    labels[:, num_vit_tokens:] = (
+        llama_output_labels  # shape: (batch_size, num_vit_tokens + seq_len)
     )
-    labels[:, num_patches:] = (
-        llama_output_labels  # shape: (batch_size, num_patches + seq_len)
-    )
+
+    # Mask instruction tokens so loss is only on code
+    instruction_ids = model.llama_tokenizer(
+        [instruction], add_special_tokens=False, return_tensors="pt"
+    ).input_ids.to(model.device)
+    instruction_len = instruction_ids.shape[1]
+
+    labels[:, num_vit_tokens : num_vit_tokens + instruction_len] = -100
 
     return inputs_embeds, full_attention_mask, labels
 
@@ -299,6 +303,6 @@ if __name__ == "__main__":
     train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
         batch_size=batch_size,
         root_dir="graphviz_rendered",
-        image_size=(336, 336),
+        image_size=None,  # (336, 336)
     )
     print(len(train_dataloader), len(val_dataloader), len(test_dataloader))
