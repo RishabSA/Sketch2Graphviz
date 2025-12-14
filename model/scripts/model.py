@@ -130,8 +130,10 @@ class Sketch2GraphvizVLM(nn.Module):
         self.vit_to_llama_projection.to(device)
         # self.vit_to_llama_projection.to(device, dtype=torch.float16)
 
-    def encode_images(self, images: torch.Tensor) -> torch.Tensor:
-        # images shape: (batch_size, 3, 336, 336)
+    def encode_images(
+        self, images: torch.Tensor | list
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        # images shape: (batch_size, 3, 336, 336) OR list of tensors
         llama_dtype = next(self.llama_model.parameters()).dtype
 
         if self.tile_images:
@@ -236,9 +238,11 @@ class Sketch2GraphvizVLM(nn.Module):
                 vit_patch_tokens
             )  # shape: (batch_size, num_patches, d_llama)
 
+            batch_size, num_patches, d_llama = vit_tokens.shape
+
             vit_attention_mask = torch.ones(
                 batch_size,
-                vit_tokens.shape[1],
+                num_patches,
                 device=self.device,
                 dtype=torch.long,
             )
@@ -302,6 +306,7 @@ class Sketch2GraphvizVLM(nn.Module):
         max_new_tokens: int = 1024,
         do_sample: bool = True,
         temperature: float = 1.0,
+        skip_special_tokens: bool = True,
     ) -> list[str]:
         # images shape: (batch_size, 3, 336, 336)
         # Use generate for inference
@@ -338,6 +343,8 @@ class Sketch2GraphvizVLM(nn.Module):
                 [vit_attention_mask, llama_attention_mask], dim=1
             )  # shape: (batch_size, num_vit_tokens + seq_len)
 
+            eot_id = self.llama_tokenizer.convert_tokens_to_ids("<|eot_id|>")
+
             # Generate from combined embeddings
             generated = self.llama_model.generate(
                 inputs_embeds=inputs_embeds,
@@ -346,11 +353,12 @@ class Sketch2GraphvizVLM(nn.Module):
                 do_sample=do_sample,
                 temperature=temperature,
                 pad_token_id=self.llama_tokenizer.eos_token_id,
+                eos_token_id=[self.llama_tokenizer.eos_token_id, eot_id],
             )
 
             sequences = self.llama_tokenizer.batch_decode(
                 generated,
-                skip_special_tokens=True,
+                skip_special_tokens=skip_special_tokens,
                 clean_up_tokenization_spaces=False,
             )
 
@@ -495,9 +503,9 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    prompt = (
+    instruction = (
         "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "
-        "Given the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
+        "Given an image of a graph, using only the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
     )
 
     model = Sketch2GraphvizVLM(
@@ -521,10 +529,11 @@ if __name__ == "__main__":
 
     sequences = model.generate(
         images=graphviz_image_tensor,
-        prompts=[prompt],
+        prompts=[instruction],
         max_new_tokens=1024,
         do_sample=True,
         temperature=1.0,
+        skip_special_tokens=True,
     )
 
     print(sequences[0])

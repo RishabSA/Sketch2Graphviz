@@ -101,7 +101,7 @@ if __name__ == "__main__":
 
     instruction = (
         "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "
-        "Given the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
+        "Given an image of a graph, using only the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
     )
 
     test_loss = evaluate_vlm(

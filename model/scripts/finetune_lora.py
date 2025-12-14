@@ -162,10 +162,11 @@ def finetune_vlm_lora(
                 images,
                 graphviz_code,
                 inputs_embeds,
-                attention_mask,
+                full_attention_mask,
                 labels,
                 outputs,
                 loss,
+                loss_val,
             )
 
             torch.cuda.empty_cache()
@@ -245,7 +246,7 @@ if __name__ == "__main__":
 
     instruction = (
         "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "
-        "Given the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
+        "Given an image of a graph, using only the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
     )
 
     lora_rank = 16

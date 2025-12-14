@@ -16,6 +16,7 @@ def predict_graphviz_dot(
     max_new_tokens: int = 1024,
     do_sample: bool = True,
     temperature: float = 1.0,
+    skip_special_tokens: bool = True,
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> str:
     model.eval()
@@ -49,6 +50,7 @@ def predict_graphviz_dot(
             max_new_tokens=max_new_tokens,
             do_sample=do_sample,
             temperature=temperature,
+            skip_special_tokens=skip_special_tokens,
         )
 
     raw_output = sequences[0]
@@ -83,7 +85,7 @@ if __name__ == "__main__":
 
     instruction = (
         "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "
-        "Given the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
+        "Given an image of a graph, using only the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
     )
 
     predicted_graphviz_output = predict_graphviz_dot(

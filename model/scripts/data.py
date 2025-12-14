@@ -141,17 +141,22 @@ def get_graphviz_hf_dataloaders(
         lambda x: "digraph" in x["graphviz_code"]
     )
 
-    train_split = concatenate_datasets(
+    dataset = concatenate_datasets(
         [
-            legal_viz_train,
+            # legal_viz_train,
             v_gen_train,
             diagram_gen_coding,
             diagram_gen_editing,
             diagram_gen_generation,
         ]
     )
+
+    dataset_split = dataset.train_test_split(test_size=0.1, seed=42)
+    train_split = dataset_split["train"]
+    test_split = dataset_split["test"]
+
     val_split = concatenate_datasets([legal_viz_val])
-    test_split = concatenate_datasets([legal_viz_test])
+    # test_split = concatenate_datasets([legal_viz_test])
 
     # Image Transforms
     transform = transforms.Compose(
@@ -197,6 +202,17 @@ def get_graphviz_hf_dataloaders(
             "graphviz_code": codes,
             "image_path": paths,
         }
+
+    # def collate_fn(batch: list[dict]) -> dict:
+    #     images = [item["image"] for item in batch]
+    #     codes = [item["graphviz_code"] for item in batch]
+    #     paths = [item["image_path"] for item in batch]
+
+    #     return {
+    #         "images": images,  # list[Tensor]
+    #         "graphviz_code": codes,
+    #         "image_path": paths,
+    #     }
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -244,13 +260,14 @@ def make_inputs_and_labels(
 
     batch_size, num_vit_tokens, d_llama = vit_tokens.shape
 
-    prompts = [instruction + code for code in graphviz_code]
+    eot_token = "<|eot_id|>"
+    prompts = [instruction + code + eot_token for code in graphviz_code]
 
     llama_inputs = model.llama_tokenizer(
         prompts,
         padding=True,
         truncation=True,
-        # max_length=1024,
+        max_length=1024,
         return_tensors="pt",
     ).to(model.device)
 
