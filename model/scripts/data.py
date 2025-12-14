@@ -91,7 +91,7 @@ class GraphvizImageCodeDataset(Dataset):
 
 
 def get_graphviz_hf_dataloaders(
-    batch_size: int = 8,
+    batch_size: int = 4,
     root_dir: str = "graphviz_rendered",
     image_size: tuple[int, int] = (336, 336),
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
@@ -159,10 +159,32 @@ def get_graphviz_hf_dataloaders(
     # test_split = concatenate_datasets([legal_viz_test])
 
     # Image Transforms
-    transform = transforms.Compose(
+    train_transform = transforms.Compose(
+        [
+            transforms.RandomApply(
+                [
+                    # Brightness/contrast
+                    transforms.ColorJitter(brightness=0.1, contrast=0.1)
+                ],
+                p=0.3,
+            ),
+            transforms.RandomAffine(
+                degrees=0,
+                translate=(0.02, 0.02),
+                scale=(0.98, 1.02),
+                fill=(255, 255, 255),  # keep background white
+            ),
+            transforms.RandomApply(
+                [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.3))],
+                p=0.2,
+            ),
+            transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
+        ]
+    )
+
+    test_transform = transforms.Compose(
         [
             transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
-            # Add normalization, random rotation, random color grading, etc
         ]
     )
 
@@ -171,7 +193,7 @@ def get_graphviz_hf_dataloaders(
         split_name="train",
         root_dir=root_dir,
         image_size=image_size,
-        transform=transform,
+        transform=train_transform,
     )
 
     val_dataset = GraphvizImageCodeDataset(
@@ -179,7 +201,7 @@ def get_graphviz_hf_dataloaders(
         split_name="validation",
         root_dir=root_dir,
         image_size=image_size,
-        transform=transform,
+        transform=test_transform,
     )
 
     test_dataset = GraphvizImageCodeDataset(
@@ -187,7 +209,7 @@ def get_graphviz_hf_dataloaders(
         split_name="test",
         root_dir=root_dir,
         image_size=image_size,
-        transform=transform,
+        transform=test_transform,
     )
 
     def collate_fn(batch: list[dict]) -> dict:
@@ -260,7 +282,7 @@ def make_inputs_and_labels(
 
     batch_size, num_vit_tokens, d_llama = vit_tokens.shape
 
-    eot_token = "<|eot_id|>"
+    eot_token = "<|end_of_text|>"
     prompts = [instruction + code + eot_token for code in graphviz_code]
 
     llama_inputs = model.llama_tokenizer(
@@ -315,7 +337,7 @@ def make_inputs_and_labels(
 
 
 if __name__ == "__main__":
-    batch_size = 4
+    batch_size = 1
 
     train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
         batch_size=batch_size,

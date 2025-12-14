@@ -33,8 +33,8 @@ def get_image_tiles(
     pad_w = (math.ceil(W / tile_size) * tile_size) - W
 
     # pad = (left, right, top, bottom)
-    image_padded = F.pad(image, (0, pad_w, 0, pad_h), value=1.0)  # white padding
-    _, H_pad, W_pad = image_padded.shape
+    image_padded = F.pad(image, (0, pad_w, 0, pad_h), value=1.0)
+    C_pad, H_pad, W_pad = image_padded.shape
 
     tiles = []
     for top in range(0, H_pad - tile_size + 1, stride):
@@ -49,7 +49,7 @@ class Sketch2GraphvizVLM(nn.Module):
     def __init__(
         self,
         vit_model_id: str = "openai/clip-vit-large-patch14-336",  # "facebook/dinov2-large", "facebook/dinov3-vitl16-pretrain-lvd1689m"
-        llama_model_id: str = "meta-llama/Llama-3.1-8B",
+        llama_model_id: str = "meta-llama/Llama-3.1-8B-Instruct",
         quantization: str = "4-bit",  # "4-bit", "8-bit", or "16-bit"
         tile_images: bool = True,
         device: torch.device = torch.device(
@@ -343,7 +343,7 @@ class Sketch2GraphvizVLM(nn.Module):
                 [vit_attention_mask, llama_attention_mask], dim=1
             )  # shape: (batch_size, num_vit_tokens + seq_len)
 
-            eot_id = self.llama_tokenizer.convert_tokens_to_ids("<|eot_id|>")
+            eot_id = self.llama_tokenizer.convert_tokens_to_ids("<|end_of_text|>")
 
             # Generate from combined embeddings
             generated = self.llama_model.generate(
@@ -393,7 +393,7 @@ def get_vit_patch_tokens(
 
 
 def load_decoder_model(
-    model_id: str = "meta-llama/Llama-3.1-8B",
+    model_id: str = "meta-llama/Llama-3.1-8B-Instruct",
 ) -> tuple[LlamaForCausalLM, PreTrainedTokenizerBase]:
     start_time = time.time()
 
@@ -510,7 +510,7 @@ if __name__ == "__main__":
 
     model = Sketch2GraphvizVLM(
         vit_model_id="openai/clip-vit-large-patch14-336",
-        llama_model_id="meta-llama/Llama-3.1-8B",
+        llama_model_id="meta-llama/Llama-3.1-8B-Instruct",
         quantization="4-bit",
         tile_images=True,
         device=device,

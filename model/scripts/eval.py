@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    batch_size = 4
+    batch_size = 1
 
     train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
         batch_size=batch_size,
@@ -107,7 +107,7 @@ if __name__ == "__main__":
 
     model = Sketch2GraphvizVLM(
         vit_model_id="openai/clip-vit-large-patch14-336",
-        llama_model_id="meta-llama/Llama-3.1-8B",
+        llama_model_id="meta-llama/Llama-3.1-8B-Instruct",
         quantization="4-bit",
         tile_images=True,
         device=device,
@@ -128,7 +128,7 @@ if __name__ == "__main__":
         instruction=instruction,
         description="Testing",
         model_load_dir="checkpoints",
-        epoch=10,
+        epoch_load=10,
         device=device,
     )
 

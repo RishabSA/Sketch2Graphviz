@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
     model = Sketch2GraphvizVLM(
         vit_model_id="openai/clip-vit-large-patch14-336",
-        llama_model_id="meta-llama/Llama-3.1-8B",
+        llama_model_id="meta-llama/Llama-3.1-8B-Instruct",
         quantization="4-bit",
         tile_images=True,
         device=device,
