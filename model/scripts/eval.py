@@ -67,7 +67,25 @@ def evaluate_vlm(
 
             loss = outputs.loss
 
-        test_loss += loss.item()
+        loss_val = loss.item()
+        test_loss += loss_val
+
+        progress_bar.set_postfix(
+            loss=f"{loss_val:.6f}",
+        )
+
+        del (
+            images,
+            graphviz_code,
+            inputs_embeds,
+            full_attention_mask,
+            labels,
+            outputs,
+            loss,
+            loss_val,
+        )
+
+        torch.cuda.empty_cache()
 
     return test_loss / len(iterator)
 
