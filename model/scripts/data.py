@@ -1,4 +1,5 @@
 import os
+import json
 import time
 from typing import Callable
 from PIL import Image
@@ -6,7 +7,7 @@ from tqdm.auto import tqdm
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from datasets import load_dataset, concatenate_datasets
+from datasets import load_dataset, concatenate_datasets, Dataset as HFDataset
 
 from scripts.graphviz_renderer import render_graphviz_dot_code
 from scripts.model import Sketch2GraphvizVLM
@@ -88,6 +89,108 @@ class GraphvizImageCodeDataset(Dataset):
             "graphviz_code": dot_code,
             "image_path": image_path,
         }
+
+
+def get_json_graphviz_json_dataloaders(
+    json_path: str = "simple_synthetic_data_gen.json",
+    batch_size: int = 4,
+    root_dir: str = "graphviz_rendered_json",
+    image_size: tuple[int, int] = (336, 336),
+) -> tuple[DataLoader, DataLoader]:
+    start_time = time.time()
+
+    # Load JSON
+    with open(json_path, "r") as file:
+        dot_code_list = json.load(file)
+
+    # Wrap data in a HuggingFace dataset
+    hf_dataset = HFDataset.from_dict({"graphviz_code": dot_code_list})
+
+    ds_split = hf_dataset.train_test_split(test_size=0.1, seed=42)
+    train_split = ds_split["train"]
+    test_split = ds_split["test"]
+
+    # Image Transforms
+    train_transform = transforms.Compose(
+        [
+            transforms.RandomApply(
+                [
+                    # Brightness/contrast
+                    transforms.ColorJitter(brightness=0.1, contrast=0.1)
+                ],
+                p=0.3,
+            ),
+            transforms.RandomAffine(
+                degrees=0,
+                translate=(0.02, 0.02),
+                scale=(0.98, 1.02),
+                fill=(255, 255, 255),  # keep background white
+            ),
+            transforms.RandomApply(
+                [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.3))],
+                p=0.2,
+            ),
+            transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
+        ]
+    )
+
+    test_transform = transforms.Compose(
+        [
+            transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
+        ]
+    )
+
+    train_dataset = GraphvizImageCodeDataset(
+        hf_split=train_split,
+        split_name="train",
+        root_dir=root_dir,
+        image_size=image_size,
+        transform=train_transform,
+    )
+
+    test_dataset = GraphvizImageCodeDataset(
+        hf_split=test_split,
+        split_name="test",
+        root_dir=root_dir,
+        image_size=image_size,
+        transform=test_transform,
+    )
+
+    def collate_fn(batch: list[dict]) -> dict:
+        images = torch.stack(
+            [item["image"] for item in batch], dim=0
+        )  # shape: (batch_size, 3, H, W)
+        codes = [item["graphviz_code"] for item in batch]
+        paths = [item["image_path"] for item in batch]
+
+        return {
+            "images": images,
+            "graphviz_code": codes,
+            "image_path": paths,
+        }
+
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=os.cpu_count(),
+        pin_memory=True,
+        collate_fn=collate_fn,
+    )
+
+    test_dataloader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=os.cpu_count(),
+        pin_memory=True,
+        collate_fn=collate_fn,
+    )
+
+    end_time = time.time()
+    print(f"JSON data load and render time: {(end_time - start_time):.4f} seconds")
+
+    return train_dataloader, test_dataloader
 
 
 def get_graphviz_hf_dataloaders(
@@ -342,6 +445,6 @@ if __name__ == "__main__":
     train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
         batch_size=batch_size,
         root_dir="graphviz_rendered",
-        image_size=None,  # (336, 336)
+        image_size=(336, 336),  # (336, 336)
     )
     print(len(train_dataloader), len(val_dataloader), len(test_dataloader))
