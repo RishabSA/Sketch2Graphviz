@@ -42,6 +42,10 @@ def add_lora_to_llama(
     llama_model = get_peft_model(llama_model, llama_lora_config)
     model.llama_model = llama_model
 
+    print("Llama Model LoRA Trainable Parameters:")
+    model.llama_model.print_trainable_parameters()
+    print("\n")
+
     return model
 
 
@@ -63,6 +67,10 @@ def add_lora_to_vit(
     vit_model = get_peft_model(vit_model, vit_lora_config)
     model.vit_model = vit_model
 
+    print("ViT Model LoRA Trainable Parameters:")
+    model.vit_model.print_trainable_parameters()
+    print("\n")
+
     return model
 
 
@@ -72,11 +80,15 @@ def finetune_vlm_lora(
     val_dataloader: DataLoader,
     instruction: str,
     rank: int = 16,
+    lora_dropout: float = 0.1,
     lr_vit: float = 1e-5,
-    lr_lora: float = 2e-4,
     lr_proj: float = 1e-4,
-    weight_decay: float = 1e-2,
-    num_epochs: int = 1,
+    lr_lora: float = 2e-4,
+    weight_decay_vit: float = 5e-2,
+    weight_decay_proj: float = 5e-2,
+    weight_decay_lora: float = 0.0,
+    num_epochs: int = 10,
+    use_val_early_stopping: bool = True,
     max_grad_norm: float = 1.0,
     model_save_dir: str = "checkpoints",
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
@@ -89,8 +101,8 @@ def finetune_vlm_lora(
     for param in model.vit_to_llama_projection.parameters():
         param.requires_grad = True
 
-    model = add_lora_to_llama(model, rank=rank, alpha=(2 * rank), dropout=0.05)
-    model = add_lora_to_vit(model, rank=rank, alpha=(2 * rank), dropout=0.05)
+    model = add_lora_to_llama(model, rank=rank, alpha=(2 * rank), dropout=lora_dropout)
+    model = add_lora_to_vit(model, rank=rank, alpha=(2 * rank), dropout=lora_dropout)
     print_num_params(model)
 
     # Optimizer over trainable params
@@ -98,8 +110,16 @@ def finetune_vlm_lora(
 
     optimizer = torch.optim.AdamW(
         [
-            {"params": model.vit_model.parameters(), "lr": lr_vit},
-            {"params": model.vit_to_llama_projection.parameters(), "lr": lr_proj},
+            {
+                "params": model.vit_model.parameters(),
+                "lr": lr_vit,
+                "weight_decay": weight_decay_vit,
+            },
+            {
+                "params": model.vit_to_llama_projection.parameters(),
+                "lr": lr_proj,
+                "weight_decay": weight_decay_proj,
+            },
             {
                 "params": [
                     param
@@ -107,9 +127,9 @@ def finetune_vlm_lora(
                     if param.requires_grad and "llama_model" in name and "lora_" in name
                 ],
                 "lr": lr_lora,
+                "weight_decay": weight_decay_lora,
             },
         ],
-        weight_decay=weight_decay,
     )
 
     scaler = GradScaler(enabled=True)
@@ -117,6 +137,8 @@ def finetune_vlm_lora(
     model.train()
     train_losses = []
     val_losses = []
+
+    best_val_loss = float("inf")
 
     for epoch in range(num_epochs):
         train_loss = 0.0
@@ -208,6 +230,13 @@ def finetune_vlm_lora(
             f"Epoch {epoch + 1} | Train loss: {epoch_train_loss:.6f} | Val loss: {epoch_val_loss:.6f}"
         )
 
+        if use_val_early_stopping:
+            if epoch_val_loss <= best_val_loss:
+                best_val_loss = epoch_val_loss
+            else:
+                print(f"Early stopping at epoch {epoch + 1}...\n")
+                break
+
     return model, train_losses, val_losses
 
 
@@ -220,16 +249,10 @@ if __name__ == "__main__":
 
     batch_size = 1
 
-    lr_vit = 1e-5
-    lr_lora = 2e-4
-    lr_proj = 1e-4
-    weight_decay = 1e-2
-    num_epochs = 1
-
     train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
         batch_size=batch_size,
         root_dir="graphviz_rendered",
-        image_size=None,  # (336, 336)
+        image_size=(336, 336),  # (672, 672), (1008, 1008), None
     )
 
     model = Sketch2GraphvizVLM(
@@ -250,6 +273,19 @@ if __name__ == "__main__":
     )
 
     lora_rank = 16
+    lora_dropout = 0.1
+
+    lr_vit = 5e-6  # 1e-5
+    lr_proj = 5e-5  # 1e-4
+    lr_lora = 1e-4  # 2e-4
+
+    weight_decay_vit = 5e-2  # 1e-2
+    weight_decay_proj = 5e-2  # 1e-2
+    weight_decay_lora = 0.0  # 1e-2
+
+    max_grad_norm = 1.0
+
+    num_epochs = 5
 
     model, train_losses, val_losses = finetune_vlm_lora(
         model=model,
@@ -257,11 +293,16 @@ if __name__ == "__main__":
         val_dataloader=val_dataloader,
         instruction=instruction,
         rank=lora_rank,
+        lora_dropout=lora_dropout,
         lr_vit=lr_vit,
-        lr_lora=lr_lora,
         lr_proj=lr_proj,
-        weight_decay=weight_decay,
+        lr_lora=lr_lora,
+        weight_decay_vit=weight_decay_vit,
+        weight_decay_proj=weight_decay_proj,
+        weight_decay_lora=weight_decay_lora,
         num_epochs=num_epochs,
+        use_val_early_stopping=True,
+        max_grad_norm=max_grad_norm,
         model_save_dir="checkpoints",
         device=device,
     )

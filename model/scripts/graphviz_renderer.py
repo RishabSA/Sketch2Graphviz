@@ -44,15 +44,10 @@ def render_graphviz_dot_code(
 
 if __name__ == "__main__":
     dot_code = """
-    digraph G {
-        rankdir=LR;
-        A -> B;
-        B -> C;
-        A -> C [label="shortcut"];
-    }
+    digraph G26 { node [shape=hex, style=filled, fillcolor=white]; hA [fillcolor=gold]; hB [fillcolor=lightsteelblue]; hC [fillcolor=lightgreen]; hD [fillcolor=lightpink]; hA -> hB [color=black, style=solid, weight=4, penwidth=2]; hB -> hC [color=blue, style=dotted, weight=1]; hC -> hD [color=gray, style=dashed, weight=2]; }
     """
 
     file_path = render_graphviz_dot_code(
-        dot_code=dot_code, name="graph_1", folder="graphs", size=(336, 336)
+        dot_code=dot_code, name="graph_6", folder="testing_outputs", size=(336, 336)
     )
     print(f"Saved graph to: {file_path}")

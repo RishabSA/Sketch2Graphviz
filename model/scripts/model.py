@@ -125,6 +125,7 @@ class Sketch2GraphvizVLM(nn.Module):
             nn.LayerNorm(vit_hidden_size),
             nn.Linear(in_features=vit_hidden_size, out_features=llama_hidden_size),
             nn.GELU(),
+            nn.Dropout(p=0.1),
             nn.Linear(in_features=llama_hidden_size, out_features=llama_hidden_size),
         )
         self.vit_to_llama_projection.to(device)
@@ -462,15 +463,54 @@ def print_num_params(model: nn.Module) -> None:
     )
 
 
-def load_sketch2graph_vlm(
+def save_sketch2graphviz_vlm_local(
     model: Sketch2GraphvizVLM,
-    model_load_dir: str | None = None,
+    model_save_dir: str = "checkpoints",
+    epoch_save: int | None = None,
+) -> None:
+    assert (
+        model_save_dir is not None and epoch_save is not None
+    ), "You must pass in values for model_save_dir and epoch_save"
+
+    os.makedirs(model_save_dir, exist_ok=True)
+
+    # Save LoRA for LLaMA
+    model.llama_model.save_pretrained(
+        os.path.join(model_save_dir, f"epoch_{epoch_save + 1}_llama_lora")
+    )
+
+    # Save LoRA for ViT
+    model.vit_model.save_pretrained(
+        os.path.join(model_save_dir, f"epoch_{epoch_save + 1}_vit_lora")
+    )
+
+    # Save ViT to Llama projector
+    torch.save(
+        model.vit_to_llama_projection.state_dict(),
+        os.path.join(model_save_dir, f"epoch_{epoch_save + 1}_proj.pt"),
+    )
+
+
+def load_sketch2graphviz_vlm_local(
+    model_load_dir: str = "checkpoints",
     epoch_load: int | None = None,
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> Sketch2GraphvizVLM:
     assert (
         model_load_dir is not None and epoch_load is not None
     ), "You must pass in values for model_load_dir and epoch_load"
+
+    model = Sketch2GraphvizVLM(
+        vit_model_id="openai/clip-vit-large-patch14-336",
+        llama_model_id="meta-llama/Llama-3.1-8B-Instruct",
+        quantization="4-bit",
+        tile_images=False,
+        device=device,
+    ).to(device)
+
+    model.llama_model.gradient_checkpointing_enable()
+    model.llama_model.config.use_cache = False
+    model.llama_model.enable_input_require_grads()
 
     # Load projector weights
     proj_path = os.path.join(model_load_dir, f"epoch_{epoch_load}_proj.pt")
@@ -480,11 +520,89 @@ def load_sketch2graph_vlm(
 
     # Load Llama LoRA adapter
     llama_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_llama_lora")
-    model.llama_model = PeftModel.from_pretrained(model.llama_model, llama_lora_dir)
+    model.llama_model = PeftModel.from_pretrained(
+        model.llama_model,
+        llama_lora_dir,
+        device_map="auto",
+        torch_dtype=torch.float16,
+    )
 
     # Load ViT LoRA adapter
     vit_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_vit_lora")
-    model.vit_model = PeftModel.from_pretrained(model.vit_model, vit_lora_dir)
+    model.vit_model = PeftModel.from_pretrained(
+        model.vit_model,
+        vit_lora_dir,
+        device_map="auto",
+        torch_dtype=torch.float16,
+    )
+
+    model.vit_to_llama_projection.to(device)
+    model.llama_model.to(device)
+    model.vit_model.to(device)
+    model.device = device
+
+    model.eval()
+
+    return model
+
+
+def save_sketch2graphviz_vlm_hf(
+    model: Sketch2GraphvizVLM, huggingface_username: str = "rishaba"
+) -> None:
+    peft_llama_id = f"{huggingface_username}/sketch2graphviz-llama-lora"
+
+    model.llama_model.push_to_hub(peft_llama_id)
+    model.llama_tokenizer.push_to_hub(peft_llama_id)
+
+    peft_vit_id = f"{huggingface_username}/sketch2graphviz-vit-lora"
+    model.vit_model.push_to_hub(peft_vit_id)
+
+    torch.save(model.vit_to_llama_projection.state_dict(), "vit_to_llama_projection.pt")
+
+
+def load_sketch2graphviz_vlm_hf(
+    model_load_dir: str | None = None,
+    epoch_load: int | None = None,
+    huggingface_username: str = "rishaba",
+    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+) -> Sketch2GraphvizVLM:
+    assert (
+        huggingface_username is not None
+    ), "You must pass in a value for huggingface_username"
+
+    model = Sketch2GraphvizVLM(
+        vit_model_id="openai/clip-vit-large-patch14-336",
+        llama_model_id="meta-llama/Llama-3.1-8B-Instruct",
+        quantization="4-bit",
+        tile_images=False,
+        device=device,
+    ).to(device)
+
+    model.llama_model.gradient_checkpointing_enable()
+    model.llama_model.config.use_cache = False
+    model.llama_model.enable_input_require_grads()
+
+    # Load projector weights
+    proj_path = os.path.join(model_load_dir, f"epoch_{epoch_load}_proj.pt")
+    model.vit_to_llama_projection.load_state_dict(
+        torch.load(proj_path, map_location=device)
+    )
+
+    peft_llama_id = f"{huggingface_username}/sketch2graphviz-llama-lora"
+    model.llama_model = PeftModel.from_pretrained(
+        model.llama_model,
+        peft_llama_id,
+        device_map="auto",
+        torch_dtype=torch.float16,
+    )
+
+    peft_vit_id = f"{huggingface_username}/sketch2graphviz-vit-lora"
+    model.vit_model = PeftModel.from_pretrained(
+        model.vit_model,
+        peft_vit_id,
+        device_map="auto",
+        torch_dtype=torch.float16,
+    )
 
     model.vit_to_llama_projection.to(device)
     model.llama_model.to(device)
@@ -522,7 +640,7 @@ if __name__ == "__main__":
 
     print_num_params(model)
 
-    graphviz_image = Image.open("graphs/graph_1.png").convert("RGB")
+    graphviz_image = Image.open("testing_graphs/graph_1.png").convert("RGB")
     graphviz_image_tensor = (
         transforms.ToTensor()(graphviz_image).unsqueeze(dim=0).to(device)
     )  # shape: (1, 3, 336, 336)
@@ -550,7 +668,7 @@ if __name__ == "__main__":
     # cls, patches = get_vit_patch_tokens(
     #     vit_model=vit_model,
     #     vit_processor=vit_processor,
-    #     image_path="graphs/graph_1.png",
+    #     image_path="testing_graphs/graph_1.png",
     #     device=device,
     # )
 

@@ -116,19 +116,18 @@ def get_json_graphviz_json_dataloaders(
             transforms.RandomApply(
                 [
                     # Brightness/contrast
-                    transforms.ColorJitter(brightness=0.1, contrast=0.1)
+                    transforms.ColorJitter(brightness=0.2, contrast=0.2)
                 ],
                 p=0.3,
             ),
             transforms.RandomAffine(
-                degrees=0,
-                translate=(0.02, 0.02),
-                scale=(0.98, 1.02),
+                degrees=2,
+                translate=(0.03, 0.03),
+                scale=(0.97, 1.03),
                 fill=(255, 255, 255),  # keep background white
             ),
             transforms.RandomApply(
-                [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.3))],
-                p=0.2,
+                [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.3
             ),
             transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
         ]
@@ -267,19 +266,18 @@ def get_graphviz_hf_dataloaders(
             transforms.RandomApply(
                 [
                     # Brightness/contrast
-                    transforms.ColorJitter(brightness=0.1, contrast=0.1)
+                    transforms.ColorJitter(brightness=0.2, contrast=0.2)
                 ],
                 p=0.3,
             ),
             transforms.RandomAffine(
-                degrees=0,
-                translate=(0.02, 0.02),
-                scale=(0.98, 1.02),
+                degrees=2,
+                translate=(0.03, 0.03),
+                scale=(0.97, 1.03),
                 fill=(255, 255, 255),  # keep background white
             ),
             transforms.RandomApply(
-                [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.3))],
-                p=0.2,
+                [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.3
             ),
             transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
         ]

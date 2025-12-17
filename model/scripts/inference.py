@@ -6,7 +6,7 @@ from torch.amp import autocast
 from torchvision import transforms
 from huggingface_hub import login
 
-from scripts.model import Sketch2GraphvizVLM, load_sketch2graph_vlm
+from scripts.model import Sketch2GraphvizVLM, load_sketch2graphviz_vlm_hf
 
 
 def predict_graphviz_dot(
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     model.llama_model.config.use_cache = False
     model.llama_model.enable_input_require_grads()
 
-    model = load_sketch2graph_vlm(
+    model = load_sketch2graphviz_vlm_hf(
         model=model,
         model_load_dir="checkpoints",
         epoch_load=10,
@@ -90,7 +90,7 @@ if __name__ == "__main__":
 
     predicted_graphviz_output = predict_graphviz_dot(
         model=model,
-        image="graphs/graph_1.png",
+        image="testing_graphs/graph_1.png",
         instruction=instruction,
         max_new_tokens=1024,
         do_sample=True,
