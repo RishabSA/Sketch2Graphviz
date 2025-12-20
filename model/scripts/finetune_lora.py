@@ -79,6 +79,165 @@ def add_lora_to_vit(
     return model
 
 
+def train_projection_cross_attention(
+    model: Sketch2GraphvizVLM,
+    train_dataloader: DataLoader,
+    val_dataloader: DataLoader,
+    instruction: str,
+    lr_proj: float = 1e-4,
+    lr_cross_attention: float = 1e-4,
+    weight_decay_proj: float = 5e-2,
+    weight_decay_cross_attention: float = 5e-2,
+    num_epochs: int = 10,
+    use_val_early_stopping: bool = True,
+    max_grad_norm: float = 1.0,
+    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+) -> tuple[Sketch2GraphvizVLM, list[float], list[float]]:
+    # Freeze original ViT
+    for param in model.vit_model.parameters():
+        param.requires_grad = False
+
+    # Freeze original Llama
+    for param in model.llama_model.parameters():
+        param.requires_grad = False
+
+    # Train projection module
+    for param in model.vit_to_llama_projection.parameters():
+        param.requires_grad = True
+
+    if model.use_cross_attention:
+        # Train Cross-Attention Vision and Text Adapter
+        for param in model.image_text_adapter.parameters():
+            param.requires_grad = True
+
+    print_num_params(model)
+
+    # Optimizer over trainable params
+    trainable_params = [param for param in model.parameters() if param.requires_grad]
+
+    if model.use_cross_attention:
+        optimizer = torch.optim.AdamW(
+            [
+                {
+                    "params": model.vit_to_llama_projection.parameters(),
+                    "lr": lr_proj,
+                    "weight_decay": weight_decay_proj,
+                },
+                {
+                    "params": model.image_text_adapter.parameters(),
+                    "lr": lr_cross_attention,
+                    "weight_decay": weight_decay_cross_attention,
+                },
+            ],
+        )
+    else:
+        optimizer = torch.optim.AdamW(
+            [
+                {
+                    "params": model.vit_to_llama_projection.parameters(),
+                    "lr": lr_proj,
+                    "weight_decay": weight_decay_proj,
+                },
+            ],
+        )
+
+    scaler = GradScaler(enabled=True)
+
+    model.train()
+
+    model.vit_model.eval()
+    model.llama_model.eval()
+    model.vit_to_llama_projection.train()
+    if model.use_cross_attention:
+        model.image_text_adapter.train()
+
+    train_losses = []
+    val_losses = []
+
+    best_val_loss = float("inf")
+
+    for epoch in range(num_epochs):
+        train_loss = 0.0
+        progress_bar = tqdm(train_dataloader, desc=f"Training epoch {epoch + 1}")
+
+        for batch in progress_bar:
+            images = batch["images"].to(device)  # shape: (batch_size, 3, H, W)
+            graphviz_code = batch["graphviz_code"]
+
+            optimizer.zero_grad()
+
+            with autocast(device_type="cuda", dtype=torch.float16):
+                inputs_embeds, full_attention_mask, labels = make_inputs_and_labels(
+                    model=model,
+                    images=images,
+                    graphviz_code=graphviz_code,
+                    instruction=instruction,
+                )
+
+                outputs = model.llama_model(
+                    inputs_embeds=inputs_embeds,
+                    attention_mask=full_attention_mask,
+                    labels=labels,
+                )
+                loss = outputs.loss
+
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+
+            torch.nn.utils.clip_grad_norm_(trainable_params, max_grad_norm)
+
+            scaler.step(optimizer)
+            scaler.update()
+
+            loss_val = loss.item()
+            train_loss += loss_val
+
+            progress_bar.set_postfix(
+                loss=f"{loss_val:.6f}",
+            )
+
+            del (
+                images,
+                graphviz_code,
+                inputs_embeds,
+                full_attention_mask,
+                labels,
+                outputs,
+                loss,
+                loss_val,
+            )
+
+            torch.cuda.empty_cache()
+
+        epoch_train_loss = train_loss / len(train_dataloader)
+
+        epoch_val_loss = evaluate_vlm(
+            model,
+            iterator=val_dataloader,
+            instruction=instruction,
+            description="Validating",
+            model_load_dir=None,
+            epoch_load=epoch,
+            device=device,
+        )
+
+        train_losses.append(epoch_train_loss)
+        val_losses.append(epoch_val_loss)
+
+        print(
+            f"Epoch {epoch + 1} | Train loss: {epoch_train_loss:.6f} | Val loss: {epoch_val_loss:.6f}"
+        )
+
+        if use_val_early_stopping:
+            if epoch_val_loss <= best_val_loss:
+                best_val_loss = epoch_val_loss
+            else:
+                print(f"Early stopping at epoch {epoch + 1}...\n")
+                break
+
+    return model, train_losses, val_losses
+
+
 def finetune_vlm_lora(
     model: Sketch2GraphvizVLM,
     train_dataloader: DataLoader,
@@ -104,7 +263,7 @@ def finetune_vlm_lora(
     for param in model.vit_model.parameters():
         param.requires_grad = False
 
-    # Train MLP projection
+    # Train projection module
     for param in model.vit_to_llama_projection.parameters():
         param.requires_grad = True
 
@@ -181,6 +340,13 @@ def finetune_vlm_lora(
     scaler = GradScaler(enabled=True)
 
     model.train()
+
+    model.vit_model.train()
+    model.llama_model.train()
+    model.vit_to_llama_projection.train()
+    if model.use_cross_attention:
+        model.image_text_adapter.train()
+
     train_losses = []
     val_losses = []
 

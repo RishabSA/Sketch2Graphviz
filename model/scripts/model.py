@@ -56,9 +56,10 @@ class ImageTextCrossAttention(nn.Module):
         )
 
         self.layer_norm = nn.LayerNorm(d_model)
+        self.dropout = nn.Dropout(p=0.1)
 
         # self.vision_scalar = nn.Parameter(torch.zeros(1))
-        self.vision_scalar = nn.Parameter(torch.tensor(0.1))
+        self.vision_scalar = nn.Parameter(torch.tensor(-5.0))
 
     def forward(
         self,
@@ -79,6 +80,7 @@ class ImageTextCrossAttention(nn.Module):
             value=img_tokens,
             key_padding_mask=key_padding_mask,
         )
+        attn_out = self.dropout(attn_out)
 
         # Residual connection
         return text_embeds + torch.sigmoid(self.vision_scalar) * attn_out
