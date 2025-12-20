@@ -397,34 +397,10 @@ def make_inputs_and_labels(
     llama_input_ids = llama_inputs.input_ids  # shape: (batch_size, seq_len)
     llama_attention_mask = llama_inputs.attention_mask  # shape: (batch_size, seq_len)
 
-    llama_output_labels = llama_input_ids.clone()  # shape: (batch_size, seq_len)
-
     # Get text embeddings from Llama
     text_embeds = model.llama_model.get_input_embeddings()(
         llama_input_ids
     )  # shape: (batch_size, seq_len, d_llama)
-
-    # Concatenate ViT and Llama embeddings along sequence dim
-    inputs_embeds = torch.cat(
-        [vit_tokens, text_embeds], dim=1
-    )  # shape: (batch_size, num_vit_tokens + seq_len, d_llama)
-
-    full_attention_mask = torch.cat(
-        [vit_attention_mask, llama_attention_mask], dim=1
-    )  # shape: (batch_size, num_vit_tokens + seq_len)
-
-    # Use -100 for visual tokens
-    labels = torch.full(
-        (batch_size, num_vit_tokens + llama_input_ids.shape[1]),
-        -100,
-        dtype=torch.long,
-        device=model.device,
-    )  # shape: (batch_size, num_vit_tokens + seq_len)
-
-    # Fill with text tokens (ViT tokens are -100)
-    labels[:, num_vit_tokens:] = (
-        llama_output_labels  # shape: (batch_size, num_vit_tokens + seq_len)
-    )
 
     # Mask instruction tokens so loss is only on code
     instruction_ids = model.llama_tokenizer(
@@ -432,7 +408,49 @@ def make_inputs_and_labels(
     ).input_ids.to(model.device)
     instruction_len = instruction_ids.shape[1]
 
-    labels[:, num_vit_tokens : num_vit_tokens + instruction_len] = -100
+    if model.use_cross_attention:
+        # Fuse ViT and Llama embeddings with Cross-Attention
+        inputs_embeds = model.image_text_adapter(
+            text_embeds,  # Query
+            vit_tokens,  # Key/Value
+            vit_attention_mask,
+        )  # shape: (batch_size, seq_len, d_model)
+
+        full_attention_mask = llama_attention_mask  # shape: (batch_size, seq_len)
+
+        labels = llama_input_ids.clone()  # shape: (batch_size, seq_len)
+
+        # Mask instructions and padding tokens
+        labels[:, :instruction_len] = -100
+        labels[llama_attention_mask == 0] = -100
+    else:
+        # Concatenate ViT and Llama embeddings along sequence dim
+        inputs_embeds = torch.cat(
+            [vit_tokens, text_embeds], dim=1
+        )  # shape: (batch_size, num_vit_tokens + seq_len, d_llama)
+
+        full_attention_mask = torch.cat(
+            [vit_attention_mask, llama_attention_mask], dim=1
+        )  # shape: (batch_size, num_vit_tokens + seq_len)
+
+        # Use -100 for visual tokens
+        labels = torch.full(
+            (batch_size, num_vit_tokens + llama_input_ids.shape[1]),
+            -100,
+            dtype=torch.long,
+            device=model.device,
+        )  # shape: (batch_size, num_vit_tokens + seq_len)
+
+        llama_output_labels = llama_input_ids.clone()  # shape: (batch_size, seq_len)
+
+        # Fill with text tokens (ViT tokens are -100)
+        labels[:, num_vit_tokens:] = (
+            llama_output_labels  # shape: (batch_size, num_vit_tokens + seq_len)
+        )
+
+        # Mask instructions and padding tokens
+        labels[:, num_vit_tokens : num_vit_tokens + instruction_len] = -100
+        labels[llama_attention_mask == 0] = -100
 
     return inputs_embeds, full_attention_mask, labels
 

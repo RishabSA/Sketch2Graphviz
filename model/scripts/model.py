@@ -45,6 +45,45 @@ def get_image_tiles(
     return tiles
 
 
+class ImageTextCrossAttention(nn.Module):
+    def __init__(self, d_model: int = 4096, num_heads: int = 8):
+        super().__init__()
+
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=d_model,
+            num_heads=num_heads,
+            batch_first=True,
+        )
+
+        self.layer_norm = nn.LayerNorm(d_model)
+
+        # self.vision_scalar = nn.Parameter(torch.zeros(1))
+        self.vision_scalar = nn.Parameter(torch.tensor(0.1))
+
+    def forward(
+        self,
+        text_embeds: torch.Tensor,
+        img_tokens: torch.Tensor,
+        img_mask: torch.Tensor = None,
+    ):
+        # text_embeds shape: (batch_size, seq_len, d_model)
+        # vit_tokens shape: (batch_size, num_vit_tokens, d_model)
+        # vit_attention_mask shape: (batch_size, num_vit_tokens)
+
+        key_padding_mask = (img_mask == 0) if img_mask is not None else None
+
+        query = self.layer_norm(text_embeds)
+        attn_out, _ = self.cross_attn(
+            query=query,
+            key=img_tokens,
+            value=img_tokens,
+            key_padding_mask=key_padding_mask,
+        )
+
+        # Residual connection
+        return text_embeds + torch.sigmoid(self.vision_scalar) * attn_out
+
+
 class Sketch2GraphvizVLM(nn.Module):
     def __init__(
         self,
@@ -52,6 +91,7 @@ class Sketch2GraphvizVLM(nn.Module):
         llama_model_id: str = "meta-llama/Llama-3.1-8B-Instruct",
         quantization: str = "4-bit",  # "4-bit", "8-bit", or "16-bit"
         tile_images: bool = True,
+        use_cross_attention: bool = True,
         device: torch.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         ),
@@ -67,6 +107,7 @@ class Sketch2GraphvizVLM(nn.Module):
         self.device = device
         self.quantization = quantization
         self.tile_images = tile_images
+        self.use_cross_attention = use_cross_attention
 
         # ViT Vision Tower
         self.vit_processor = AutoImageProcessor.from_pretrained(vit_model_id)
@@ -128,8 +169,17 @@ class Sketch2GraphvizVLM(nn.Module):
             nn.Dropout(p=0.1),
             nn.Linear(in_features=llama_hidden_size, out_features=llama_hidden_size),
         )
+
         self.vit_to_llama_projection.to(device)
-        # self.vit_to_llama_projection.to(device, dtype=torch.float16)
+
+        self.image_text_adapter = nn.Identity()
+
+        if use_cross_attention:
+            self.image_text_adapter = ImageTextCrossAttention(
+                d_model=llama_hidden_size,
+                num_heads=self.llama_model.config.num_attention_heads,
+            )
+            self.image_text_adapter.to(device)
 
     def encode_images(
         self, images: torch.Tensor | list
@@ -283,14 +333,24 @@ class Sketch2GraphvizVLM(nn.Module):
             llama_input_ids
         )  # shape: (batch_size, seq_len, d_llama)
 
-        # Concatenate ViT and Llama embeddings along sequence dim
-        inputs_embeds = torch.cat(
-            [vit_tokens, text_embeds], dim=1
-        )  # shape: (batch_size, num_vit_tokens + seq_len, d_llama)
+        if self.use_cross_attention:
+            # Fuse ViT and Llama embeddings with Cross-Attention
+            inputs_embeds = self.image_text_adapter(
+                text_embeds,  # Query
+                vit_tokens,  # Key/Value
+                vit_attention_mask,
+            )  # shape: (batch_size, seq_len, d_model)
 
-        full_attention_mask = torch.cat(
-            [vit_attention_mask, llama_attention_mask], dim=1
-        )  # shape: (batch_size, num_vit_tokens + seq_len)
+            full_attention_mask = llama_attention_mask  # shape: (batch_size, seq_len)
+        else:
+            # Concatenate ViT and Llama embeddings along sequence dim
+            inputs_embeds = torch.cat(
+                [vit_tokens, text_embeds], dim=1
+            )  # shape: (batch_size, num_vit_tokens + seq_len, d_llama)
+
+            full_attention_mask = torch.cat(
+                [vit_attention_mask, llama_attention_mask], dim=1
+            )  # shape: (batch_size, num_vit_tokens + seq_len)
 
         outputs = self.llama_model(
             inputs_embeds=inputs_embeds,
@@ -335,14 +395,26 @@ class Sketch2GraphvizVLM(nn.Module):
                 llama_input_ids
             )  # shape: (batch_size, seq_len, d_llama)
 
-            # Concatenate ViT and Llama embeddings along sequence dim
-            inputs_embeds = torch.cat(
-                [vit_tokens, text_embeds], dim=1
-            )  # shape: (batch_size, num_vit_tokens + seq_len, d_llama)
+            if self.use_cross_attention:
+                # Fuse ViT and Llama embeddings with Cross-Attention
+                inputs_embeds = self.image_text_adapter(
+                    text_embeds,  # Query
+                    vit_tokens,  # Key/Value
+                    vit_attention_mask,
+                )  # shape: (batch_size, seq_len, d_model)
 
-            full_attention_mask = torch.cat(
-                [vit_attention_mask, llama_attention_mask], dim=1
-            )  # shape: (batch_size, num_vit_tokens + seq_len)
+                full_attention_mask = (
+                    llama_attention_mask  # shape: (batch_size, seq_len)
+                )
+            else:
+                # Concatenate ViT and Llama embeddings along sequence dim
+                inputs_embeds = torch.cat(
+                    [vit_tokens, text_embeds], dim=1
+                )  # shape: (batch_size, num_vit_tokens + seq_len, d_llama)
+
+                full_attention_mask = torch.cat(
+                    [vit_attention_mask, llama_attention_mask], dim=1
+                )  # shape: (batch_size, num_vit_tokens + seq_len)
 
             eot_id = self.llama_tokenizer.convert_tokens_to_ids("<|end_of_text|>")
 
@@ -505,6 +577,7 @@ def load_sketch2graphviz_vlm_local(
         llama_model_id="meta-llama/Llama-3.1-8B-Instruct",
         quantization="4-bit",
         tile_images=False,
+        use_cross_attention=True,
         device=device,
     ).to(device)
 
@@ -575,6 +648,7 @@ def load_sketch2graphviz_vlm_hf(
         llama_model_id="meta-llama/Llama-3.1-8B-Instruct",
         quantization="4-bit",
         tile_images=False,
+        use_cross_attention=True,
         device=device,
     ).to(device)
 
@@ -630,7 +704,8 @@ if __name__ == "__main__":
         vit_model_id="openai/clip-vit-large-patch14-336",
         llama_model_id="meta-llama/Llama-3.1-8B-Instruct",
         quantization="4-bit",
-        tile_images=True,
+        tile_images=False,
+        use_cross_attention=True,
         device=device,
     )
 

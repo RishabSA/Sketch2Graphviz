@@ -65,6 +65,11 @@ def add_lora_to_vit(
     )
 
     vit_model = get_peft_model(vit_model, vit_lora_config)
+
+    for name, param in vit_model.named_parameters():
+        if "lora_" in name:
+            param.requires_grad = True
+
     model.vit_model = vit_model
 
     print("ViT Model LoRA Trainable Parameters:")
@@ -83,9 +88,11 @@ def finetune_vlm_lora(
     lora_dropout: float = 0.1,
     lr_vit: float = 1e-5,
     lr_proj: float = 1e-4,
+    lr_cross_attention: float = 1e-4,
     lr_lora: float = 2e-4,
     weight_decay_vit: float = 5e-2,
     weight_decay_proj: float = 5e-2,
+    weight_decay_cross_attention: float = 5e-2,
     weight_decay_lora: float = 0.0,
     num_epochs: int = 10,
     use_val_early_stopping: bool = True,
@@ -93,13 +100,18 @@ def finetune_vlm_lora(
     model_save_dir: str = "checkpoints",
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> tuple[Sketch2GraphvizVLM, list[float], list[float]]:
-    # Train ViT
+    # Freeze original ViT for LoRA
     for param in model.vit_model.parameters():
-        param.requires_grad = True
+        param.requires_grad = False
 
     # Train MLP projection
     for param in model.vit_to_llama_projection.parameters():
         param.requires_grad = True
+
+    if model.use_cross_attention:
+        # Train Cross-Attention Vision and Text Adapter
+        for param in model.image_text_adapter.parameters():
+            param.requires_grad = True
 
     model = add_lora_to_llama(model, rank=rank, alpha=(2 * rank), dropout=lora_dropout)
     model = add_lora_to_vit(model, rank=rank, alpha=(2 * rank), dropout=lora_dropout)
@@ -108,29 +120,63 @@ def finetune_vlm_lora(
     # Optimizer over trainable params
     trainable_params = [param for param in model.parameters() if param.requires_grad]
 
-    optimizer = torch.optim.AdamW(
-        [
-            {
-                "params": model.vit_model.parameters(),
-                "lr": lr_vit,
-                "weight_decay": weight_decay_vit,
-            },
-            {
-                "params": model.vit_to_llama_projection.parameters(),
-                "lr": lr_proj,
-                "weight_decay": weight_decay_proj,
-            },
-            {
-                "params": [
-                    param
-                    for name, param in model.named_parameters()
-                    if param.requires_grad and "llama_model" in name and "lora_" in name
-                ],
-                "lr": lr_lora,
-                "weight_decay": weight_decay_lora,
-            },
-        ],
-    )
+    if model.use_cross_attention:
+        optimizer = torch.optim.AdamW(
+            [
+                {
+                    "params": model.vit_model.parameters(),
+                    "lr": lr_vit,
+                    "weight_decay": weight_decay_vit,
+                },
+                {
+                    "params": model.vit_to_llama_projection.parameters(),
+                    "lr": lr_proj,
+                    "weight_decay": weight_decay_proj,
+                },
+                {
+                    "params": model.image_text_adapter.parameters(),
+                    "lr": lr_cross_attention,
+                    "weight_decay": weight_decay_cross_attention,
+                },
+                {
+                    "params": [
+                        param
+                        for name, param in model.named_parameters()
+                        if param.requires_grad
+                        and "llama_model" in name
+                        and "lora_" in name
+                    ],
+                    "lr": lr_lora,
+                    "weight_decay": weight_decay_lora,
+                },
+            ],
+        )
+    else:
+        optimizer = torch.optim.AdamW(
+            [
+                {
+                    "params": model.vit_model.parameters(),
+                    "lr": lr_vit,
+                    "weight_decay": weight_decay_vit,
+                },
+                {
+                    "params": model.vit_to_llama_projection.parameters(),
+                    "lr": lr_proj,
+                    "weight_decay": weight_decay_proj,
+                },
+                {
+                    "params": [
+                        param
+                        for name, param in model.named_parameters()
+                        if param.requires_grad
+                        and "llama_model" in name
+                        and "lora_" in name
+                    ],
+                    "lr": lr_lora,
+                    "weight_decay": weight_decay_lora,
+                },
+            ],
+        )
 
     scaler = GradScaler(enabled=True)
 
@@ -259,7 +305,8 @@ if __name__ == "__main__":
         vit_model_id="openai/clip-vit-large-patch14-336",
         llama_model_id="meta-llama/Llama-3.1-8B-Instruct",
         quantization="4-bit",
-        tile_images=True,
+        tile_images=False,
+        use_cross_attention=True,
         device=device,
     ).to(device)
 
@@ -275,13 +322,15 @@ if __name__ == "__main__":
     lora_rank = 16
     lora_dropout = 0.1
 
-    lr_vit = 5e-6  # 1e-5
-    lr_proj = 5e-5  # 1e-4
-    lr_lora = 1e-4  # 2e-4
+    lr_vit = 1e-5  # 5e-6
+    lr_proj = 1e-4  # 5e-5
+    lr_cross_attention = 1e-4  # 5e-5
+    lr_lora = 2e-4  # 1e-4
 
-    weight_decay_vit = 5e-2  # 1e-2
-    weight_decay_proj = 5e-2  # 1e-2
-    weight_decay_lora = 0.0  # 1e-2
+    weight_decay_vit = 1e-2  # 5e-2
+    weight_decay_proj = 1e-2  # 5e-2
+    weight_decay_cross_attention = 1e-2  # 5e-2
+    weight_decay_lora = 1e-3  # 1e-2
 
     max_grad_norm = 1.0
 
@@ -296,9 +345,11 @@ if __name__ == "__main__":
         lora_dropout=lora_dropout,
         lr_vit=lr_vit,
         lr_proj=lr_proj,
+        lr_cross_attention=lr_cross_attention,
         lr_lora=lr_lora,
         weight_decay_vit=weight_decay_vit,
         weight_decay_proj=weight_decay_proj,
+        weight_decay_cross_attention=weight_decay_cross_attention,
         weight_decay_lora=weight_decay_lora,
         num_epochs=num_epochs,
         use_val_early_stopping=True,
