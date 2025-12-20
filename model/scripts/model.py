@@ -84,6 +84,47 @@ class ImageTextCrossAttention(nn.Module):
         return text_embeds + torch.sigmoid(self.vision_scalar) * attn_out
 
 
+class VisionToLlamaProjection(nn.Module):
+    def __init__(
+        self,
+        vit_hidden_size: int = 1024,
+        llama_hidden_size: int = 4096,
+        dropout_p: float = 0.1,
+    ):
+        super().__init__()
+
+        self.layer_norm = nn.LayerNorm(vit_hidden_size)
+
+        self.layer_1 = nn.Linear(
+            in_features=vit_hidden_size, out_features=llama_hidden_size
+        )
+
+        self.activation = nn.GELU()
+        self.dropout = nn.Dropout(p=dropout_p)
+
+        self.layer_2 = nn.Linear(
+            in_features=llama_hidden_size, out_features=llama_hidden_size
+        )
+
+        self.layer_residual = nn.Linear(
+            in_features=vit_hidden_size, out_features=llama_hidden_size
+        )
+
+    def forward(self, vit_tokens: torch.Tensor):
+        # x shape: (batch_size, num_patches, d_vit)
+
+        vit_tokens_norm = self.layer_norm(vit_tokens)
+
+        x = self.layer_1(vit_tokens_norm)
+        x = self.activation(x)
+        x = self.dropout(x)
+        x = self.layer_2(x)
+
+        return x + self.layer_residual(
+            vit_tokens
+        )  # shape: (batch_size, num_patches, d_llama)
+
+
 class Sketch2GraphvizVLM(nn.Module):
     def __init__(
         self,
@@ -162,12 +203,18 @@ class Sketch2GraphvizVLM(nn.Module):
         #     in_features=vit_hidden_size, out_features=llama_hidden_size
         # )
 
-        self.vit_to_llama_projection = nn.Sequential(
-            nn.LayerNorm(vit_hidden_size),
-            nn.Linear(in_features=vit_hidden_size, out_features=llama_hidden_size),
-            nn.GELU(),
-            nn.Dropout(p=0.1),
-            nn.Linear(in_features=llama_hidden_size, out_features=llama_hidden_size),
+        # self.vit_to_llama_projection = nn.Sequential(
+        #     nn.LayerNorm(vit_hidden_size),
+        #     nn.Linear(in_features=vit_hidden_size, out_features=llama_hidden_size),
+        #     nn.GELU(),
+        #     nn.Dropout(p=0.1),
+        #     nn.Linear(in_features=llama_hidden_size, out_features=llama_hidden_size),
+        # )
+
+        self.vit_to_llama_projection = VisionToLlamaProjection(
+            vit_hidden_size=vit_hidden_size,
+            llama_hidden_size=llama_hidden_size,
+            dropout_p=0.1,
         )
 
         self.vit_to_llama_projection.to(device)
