@@ -1,6 +1,6 @@
 import os
 from graphviz import Source
-from PIL import Image, ImageChops
+from PIL import Image
 
 
 def render_graphviz_dot_code(
@@ -26,6 +26,7 @@ def render_graphviz_dot_code(
             width, height = image.size
             target_width, target_height = size
 
+            # Calculate minimum resize ratio
             ratio_w = target_width / width
             ratio_h = target_height / height
             ratio = min(ratio_w, ratio_h) - 0.05
