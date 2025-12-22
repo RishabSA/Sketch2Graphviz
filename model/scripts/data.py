@@ -11,6 +11,7 @@ from datasets import load_dataset, concatenate_datasets, Dataset as HFDataset
 
 from scripts.graphviz_renderer import render_graphviz_dot_code
 from scripts.model import Sketch2GraphvizVLM
+from scripts.model_clip_llama import CLIPLlamaSketch2GraphvizVLM
 
 
 class GraphvizImageCodeDataset(Dataset):
@@ -19,7 +20,7 @@ class GraphvizImageCodeDataset(Dataset):
         hf_split,
         split_name: str,
         root_dir: str = "graphviz_rendered",
-        image_size: tuple[int, int] = (336, 336),
+        image_size: tuple[int, int] = (1024, 1024),
         transform: Callable | None = None,
     ):
         self.hf_split = hf_split
@@ -95,7 +96,7 @@ def get_json_graphviz_json_dataloaders(
     json_path: str = "simple_synthetic_data_gen.json",
     batch_size: int = 4,
     root_dir: str = "graphviz_rendered_json",
-    image_size: tuple[int, int] = (336, 336),
+    image_size: tuple[int, int] = (1024, 1024),
 ) -> tuple[DataLoader, DataLoader]:
     start_time = time.time()
 
@@ -121,13 +122,13 @@ def get_json_graphviz_json_dataloaders(
                 p=0.3,
             ),
             transforms.RandomAffine(
-                degrees=2,
+                degrees=0,
                 translate=(0.03, 0.03),
                 scale=(0.97, 1.03),
-                fill=(255, 255, 255),  # keep background white
+                fill=(255, 255, 255),
             ),
             transforms.RandomApply(
-                [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.3
+                [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.1
             ),
             transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
         ]
@@ -195,7 +196,7 @@ def get_json_graphviz_json_dataloaders(
 def get_graphviz_hf_dataloaders(
     batch_size: int = 4,
     root_dir: str = "graphviz_rendered",
-    image_size: tuple[int, int] = (336, 336),
+    image_size: tuple[int, int] = (1024, 1024),
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     start_time = time.time()
 
@@ -271,13 +272,13 @@ def get_graphviz_hf_dataloaders(
                 p=0.3,
             ),
             transforms.RandomAffine(
-                degrees=2,
+                degrees=0,
                 translate=(0.03, 0.03),
                 scale=(0.97, 1.03),
-                fill=(255, 255, 255),  # keep background white
+                fill=(255, 255, 255),
             ),
             transforms.RandomApply(
-                [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.3
+                [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.1
             ),
             transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
         ]
@@ -370,8 +371,47 @@ def get_graphviz_hf_dataloaders(
     return train_dataloader, val_dataloader, test_dataloader
 
 
-def make_inputs_and_labels(
+def make_inputs_and_labels_vlm(
     model: Sketch2GraphvizVLM,
+    images: torch.Tensor,
+    graphviz_code: list[str],
+    instruction: str,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    encoded_image_vectors = model.encode_images(
+        images
+    )  # shape: (batch_size, seq_len * d_model)
+
+    eot_token = "<|end_of_text|>"
+    prompts = [instruction + code + eot_token for code in graphviz_code]
+
+    inputs = model.processor(
+        text=prompts,
+        images=images,
+        return_tensors="pt",
+        max_length=1024,
+        padding=True,
+        truncation=True,
+    ).to(model.device)
+
+    labels = inputs["input_ids"].clone()  # shape: (batch_size, seq_len)
+
+    # Mask instruction tokens in label so loss is only on code
+    instruction_ids = model.tokenizer(
+        [instruction], add_special_tokens=False, return_tensors="pt"
+    ).input_ids.to(model.device)
+    instruction_len = instruction_ids.shape[1]
+
+    labels[:, 0:instruction_len] = -100
+
+    # Mask padding tokens
+    attention_mask = inputs["attention_mask"]
+    labels[attention_mask == 0] = -100
+
+    return inputs, encoded_image_vectors, labels
+
+
+def make_inputs_and_labels_clip_llama_vlm(
+    model: CLIPLlamaSketch2GraphvizVLM,
     images: torch.Tensor,
     graphviz_code: list[str],
     instruction: str,
@@ -422,7 +462,7 @@ def make_inputs_and_labels(
 
         # Mask instructions and padding tokens
         labels[:, :instruction_len] = -100
-        labels[llama_attention_mask == 0] = -100
+        labels[full_attention_mask == 0] = -100
     else:
         # Concatenate ViT and Llama embeddings along sequence dim
         inputs_embeds = torch.cat(
@@ -450,7 +490,7 @@ def make_inputs_and_labels(
 
         # Mask instructions and padding tokens
         labels[:, num_vit_tokens : num_vit_tokens + instruction_len] = -100
-        labels[llama_attention_mask == 0] = -100
+        labels[full_attention_mask == 0] = -100
 
     return inputs_embeds, full_attention_mask, labels
 
@@ -461,6 +501,6 @@ if __name__ == "__main__":
     train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
         batch_size=batch_size,
         root_dir="graphviz_rendered",
-        image_size=(336, 336),  # (336, 336)
+        image_size=(768, 768),  # (512, 512), (1024, 1024)
     )
     print(len(train_dataloader), len(val_dataloader), len(test_dataloader))

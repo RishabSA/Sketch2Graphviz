@@ -2,15 +2,16 @@ import os
 from dotenv import load_dotenv
 from PIL import Image
 import torch
+import torch.nn as nn
 from torch.amp import autocast
 from torchvision import transforms
 from huggingface_hub import login
 
-from scripts.model import Sketch2GraphvizVLM, load_sketch2graphviz_vlm_hf
+from scripts.model import Sketch2GraphvizVLM, load_sketch2graphviz_vlm_local
 
 
 def predict_graphviz_dot(
-    model: Sketch2GraphvizVLM,
+    model: nn.Module,
     image: str | Image.Image | torch.Tensor,
     instruction: str,
     max_new_tokens: int = 1024,
@@ -69,7 +70,7 @@ if __name__ == "__main__":
         llama_model_id="meta-llama/Llama-3.1-8B-Instruct",
         quantization="4-bit",
         tile_images=False,
-        use_cross_attention=True,
+        use_cross_attention=False,
         device=device,
     )
 
@@ -77,7 +78,7 @@ if __name__ == "__main__":
     model.llama_model.config.use_cache = False
     model.llama_model.enable_input_require_grads()
 
-    model = load_sketch2graphviz_vlm_hf(
+    model = load_sketch2graphviz_vlm_local(
         model=model,
         model_load_dir="checkpoints",
         epoch_load=10,

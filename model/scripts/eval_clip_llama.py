@@ -7,15 +7,15 @@ from tqdm.auto import tqdm
 from peft import PeftModel
 from huggingface_hub import login
 
-from scripts.model import Sketch2GraphvizVLM
+from scripts.model_clip_llama import CLIPLlamaSketch2GraphvizVLM
 from scripts.data import (
     get_graphviz_hf_dataloaders,
-    make_inputs_and_labels_vlm,
+    make_inputs_and_labels_clip_llama_vlm,
 )
 
 
-def evaluate_vlm(
-    model: Sketch2GraphvizVLM,
+def evaluate_clip_llama_vlm(
+    model: CLIPLlamaSketch2GraphvizVLM,
     iterator: DataLoader,
     instruction: str,
     description: str = "Testing",
@@ -24,18 +24,24 @@ def evaluate_vlm(
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> float:
     if model_load_dir is not None and epoch_load is not None:
-        vlm_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_vlm_lora")
-        model.llama_model = PeftModel.from_pretrained(
-            model.llama_model,
-            vlm_lora_dir,
-            device_map="auto",
-            torch_dtype=torch.float16,
+        # Load projector weights
+        proj_path = os.path.join(model_load_dir, f"epoch_{epoch_load}_proj.pt")
+        model.vit_to_llama_projection.load_state_dict(
+            torch.load(proj_path, map_location=device)
         )
 
-        model.llama_model.to(device)
-        model.device = device
+        # Load Llama LoRA adapter
+        llama_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_llama_lora")
+        model.llama_model = PeftModel.from_pretrained(model.llama_model, llama_lora_dir)
 
-        print(f"Loaded VLM LoRA from: {vlm_lora_dir}")
+        # Load ViT LoRA adapter
+        vit_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_vit_lora")
+        model.vit_model = PeftModel.from_pretrained(model.vit_model, vit_lora_dir)
+
+        model.vit_to_llama_projection.to(device)
+        model.llama_model.to(device)
+        model.vit_model.to(device)
+        model.device = device
 
     model.eval()
 
@@ -48,18 +54,19 @@ def evaluate_vlm(
         graphviz_code = batch["graphviz_code"]
 
         with autocast(device_type="cuda", dtype=torch.float16):
-            inputs, encoded_image_vectors, labels = make_inputs_and_labels_vlm(
-                model=model,
-                images=images,
-                graphviz_code=graphviz_code,
-                instruction=instruction,
+            inputs_embeds, full_attention_mask, labels = (
+                make_inputs_and_labels_clip_llama_vlm(
+                    model=model,
+                    images=images,
+                    graphviz_code=graphviz_code,
+                    instruction=instruction,
+                )
             )
 
             with torch.inference_mode():
                 outputs = model.llama_model(
-                    input_ids=inputs["input_ids"],
-                    attention_mask=inputs["attention_mask"],
-                    pixel_values=inputs["pixel_values"],
+                    inputs_embeds=inputs_embeds,
+                    attention_mask=full_attention_mask,
                     labels=labels,
                 )
 
@@ -75,8 +82,8 @@ def evaluate_vlm(
         del (
             images,
             graphviz_code,
-            inputs,
-            encoded_image_vectors,
+            inputs_embeds,
+            full_attention_mask,
             labels,
             outputs,
             loss,
@@ -100,12 +107,15 @@ if __name__ == "__main__":
     train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
         batch_size=batch_size,
         root_dir="graphviz_rendered",
-        image_size=(768, 768),  # (512, 512), (1024, 1024)
+        image_size=None,  # (336, 336)
     )
 
-    model = Sketch2GraphvizVLM(
-        llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
+    model = CLIPLlamaSketch2GraphvizVLM(
+        vit_model_id="openai/clip-vit-large-patch14-336",
+        llama_model_id="meta-llama/Llama-3.1-8B-Instruct",
         quantization="4-bit",
+        tile_images=False,
+        use_cross_attention=False,
         device=device,
     ).to(device)
 
@@ -118,7 +128,7 @@ if __name__ == "__main__":
         "Given an image of a graph, using only the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
     )
 
-    test_loss = evaluate_vlm(
+    test_loss = evaluate_clip_llama_vlm(
         model=model,
         iterator=test_dataloader,
         instruction=instruction,

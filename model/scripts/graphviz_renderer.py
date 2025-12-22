@@ -1,13 +1,13 @@
 import os
 from graphviz import Source
-from PIL import Image
+from PIL import Image, ImageChops
 
 
 def render_graphviz_dot_code(
     dot_code: str,
     name: str,
     folder: str = "graphs",
-    size: tuple[int, int] | None = (336, 336),
+    size: tuple[int, int] | None = (1024, 1024),
 ) -> str:
     os.makedirs(folder, exist_ok=True)
     src = Source(dot_code)
@@ -22,20 +22,31 @@ def render_graphviz_dot_code(
     )
 
     if size is not None:
-        # Resize with the same aspect ratio and pad with whitespace
         with Image.open(output_path) as image:
-            target_w, target_h = size
+            width, height = image.size
+            target_width, target_height = size
 
-            # Scale to fit inside target size while preserving aspect ratio
-            image.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
+            ratio_w = target_width / width
+            ratio_h = target_height / height
+            ratio = min(ratio_w, ratio_h) - 0.05
 
-            # Create a white background canvas
-            background = Image.new("RGB", size, (255, 255, 255))
+            new_width = int(width * ratio)
+            new_height = int(height * ratio)
 
-            # Center the graph on the canvas
-            offset_x = (target_w - image.width) // 2
-            offset_y = (target_h - image.height) // 2
-            background.paste(image, (offset_x, offset_y))
+            # Resize the content
+            resized_content = image.resize(
+                (new_width, new_height), Image.Resampling.LANCZOS
+            )
+
+            # Paste onto a white canvas, keeping it centered
+            background = Image.new(
+                "RGB", (target_width, target_height), (255, 255, 255)
+            )
+
+            offset_x = (target_width - new_width) // 2
+            offset_y = (target_height - new_height) // 2
+
+            background.paste(resized_content, (offset_x, offset_y))
 
             background.save(output_path)
 
@@ -48,6 +59,6 @@ if __name__ == "__main__":
     """
 
     file_path = render_graphviz_dot_code(
-        dot_code=dot_code, name="graph_6", folder="testing_outputs", size=(336, 336)
+        dot_code=dot_code, name="graph_4", folder="testing_outputs", size=(768, 768)
     )
     print(f"Saved graph to: {file_path}")
