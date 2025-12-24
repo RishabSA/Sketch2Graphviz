@@ -47,7 +47,11 @@ def evaluate_vlm(
         images = batch["images"].to(device)
         graphviz_code = batch["graphviz_code"]
 
-        with autocast(device_type="cuda", dtype=torch.float16):
+        with autocast(
+            device_type="cuda",
+            dtype=torch.float16,
+            enabled=(device.type == "cuda"),
+        ):
             inputs, encoded_image_vectors, labels = make_inputs_and_labels_vlm(
                 model=model,
                 images=images,
@@ -57,9 +61,7 @@ def evaluate_vlm(
 
             with torch.inference_mode():
                 outputs = model.llama_model(
-                    input_ids=inputs["input_ids"],
-                    attention_mask=inputs["attention_mask"],
-                    pixel_values=inputs["pixel_values"],
+                    **inputs,
                     labels=labels,
                 )
 
@@ -107,11 +109,7 @@ if __name__ == "__main__":
         llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
         quantization="4-bit",
         device=device,
-    ).to(device)
-
-    model.llama_model.gradient_checkpointing_enable()
-    model.llama_model.config.use_cache = False
-    model.llama_model.enable_input_require_grads()
+    )
 
     instruction = (
         "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "

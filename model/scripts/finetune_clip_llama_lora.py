@@ -37,8 +37,9 @@ def add_lora_to_llama(
 
     llama_model = model.llama_model
 
-    # k-bit training (QLoRA)
-    llama_model = prepare_model_for_kbit_training(llama_model)
+    if model.quantization != "16-bit":
+        # k-bit training (QLoRA)
+        llama_model = prepare_model_for_kbit_training(llama_model)
 
     target_modules = [
         "q_proj",
@@ -505,11 +506,7 @@ if __name__ == "__main__":
         tile_images=False,
         use_cross_attention=False,
         device=device,
-    ).to(device)
-
-    model.llama_model.gradient_checkpointing_enable()
-    model.llama_model.config.use_cache = False
-    model.llama_model.enable_input_require_grads()
+    )
 
     instruction = (
         "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "

@@ -33,8 +33,16 @@ def add_lora_to_VLM(
 
     llama_model = model.llama_model
 
-    # k-bit training (QLoRA)
-    llama_model = prepare_model_for_kbit_training(llama_model)
+    if model.quantization != "16-bit":
+        # QLoRA
+        llama_model = prepare_model_for_kbit_training(llama_model)
+
+    model.llama_model.gradient_checkpointing_enable()
+    # model.llama_model.gradient_checkpointing_enable(
+    #     gradient_checkpointing_kwargs={"use_reentrant": False}
+    # )
+    model.llama_model.config.use_cache = False
+    model.llama_model.enable_input_require_grads()
 
     target_modules = [
         "q_proj",
@@ -47,8 +55,6 @@ def add_lora_to_VLM(
         "fc1",
         "fc2",
         "multi_modal_projector",
-        "mm_projector",
-        "vision_projector",
     ]
 
     lora_config = LoraConfig(
@@ -60,8 +66,7 @@ def add_lora_to_VLM(
         task_type=TaskType.CAUSAL_LM,
     )
 
-    llama_model = get_peft_model(llama_model, lora_config)
-    model.llama_model = llama_model
+    model.llama_model = get_peft_model(llama_model, lora_config)
 
     print("Llama Model LoRA Trainable Parameters:")
     model.llama_model.print_trainable_parameters()
@@ -78,7 +83,7 @@ def finetune_vlm_lora(
     rank: int = 32,
     lora_dropout: float = 0.1,
     lr_lora: float = 2e-4,
-    weight_decay_lora: float = 0.0,
+    weight_decay_lora: float = 1e-2,
     num_epochs: int = 10,
     use_val_early_stopping: bool = True,
     max_grad_norm: float = 1.0,
@@ -86,27 +91,22 @@ def finetune_vlm_lora(
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> tuple[Sketch2GraphvizVLM, list[float], list[float]]:
     # Freeze base model for LoRA
-    for param in model.llama_model.parameters():
-        param.requires_grad = False
+    # for param in model.llama_model.parameters():
+    #     param.requires_grad = False
 
     model = add_lora_to_VLM(model, rank=rank, alpha=(2 * rank), dropout=lora_dropout)
     print_num_params(model)
 
-    # Optimizer over trainable params
-    trainable_params = [param for param in model.parameters() if param.requires_grad]
+    trainable_params = [
+        param
+        for name, param in model.named_parameters()
+        if param.requires_grad and "lora_" in name
+    ]
 
     optimizer = torch.optim.AdamW(
-        [
-            {
-                "params": [
-                    param
-                    for name, param in model.named_parameters()
-                    if param.requires_grad and "lora_" in name
-                ],
-                "lr": lr_lora,
-                "weight_decay": weight_decay_lora,
-            },
-        ],
+        params=trainable_params,
+        lr=lr_lora,
+        weight_decay=weight_decay_lora,
     )
 
     scaler = GradScaler(enabled=True)
@@ -129,18 +129,20 @@ def finetune_vlm_lora(
 
             optimizer.zero_grad()
 
-            with autocast(device_type="cuda", dtype=torch.float16):
-                inputs, encoded_image_vectors, labels = make_inputs_and_labels_vlm(
-                    model=model,
-                    images=images,
-                    graphviz_code=graphviz_code,
-                    instruction=instruction,
-                )
+            inputs, encoded_image_vectors, labels = make_inputs_and_labels_vlm(
+                model=model,
+                images=images,
+                graphviz_code=graphviz_code,
+                instruction=instruction,
+            )
 
+            with autocast(
+                device_type="cuda",
+                dtype=torch.float16,
+                enabled=(device.type == "cuda"),
+            ):
                 outputs = model.llama_model(
-                    input_ids=inputs["input_ids"],
-                    attention_mask=inputs["attention_mask"],
-                    pixel_values=inputs["pixel_values"],
+                    **inputs,
                     labels=labels,
                 )
 
@@ -153,6 +155,10 @@ def finetune_vlm_lora(
 
             scaler.step(optimizer)
             scaler.update()
+
+            # loss.backward()
+            # torch.nn.utils.clip_grad_norm_(trainable_params, max_grad_norm)
+            # optimizer.step()
 
             loss_val = loss.item()
             train_loss += loss_val
@@ -229,11 +235,7 @@ if __name__ == "__main__":
         llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
         quantization="4-bit",
         device=device,
-    ).to(device)
-
-    model.llama_model.gradient_checkpointing_enable()
-    model.llama_model.config.use_cache = False
-    model.llama_model.enable_input_require_grads()
+    )
 
     instruction = (
         "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "
