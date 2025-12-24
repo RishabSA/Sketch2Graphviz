@@ -27,7 +27,7 @@ class GraphvizImageCodeDataset(Dataset):
         self.split_name = split_name
         self.root_dir = root_dir
         self.image_size = image_size
-        self.transform = transform
+        self.transform = transform or transforms.ToTensor()
 
         self.split_dir = os.path.join(root_dir, split_name)
         os.makedirs(self.split_dir, exist_ok=True)
@@ -65,6 +65,7 @@ class GraphvizImageCodeDataset(Dataset):
                 self.image_paths.append(path)
             except Exception as e:
                 skipped += 1
+
                 print(f"Skipping index {i} due to Graphviz error: {e}")
 
         print(
@@ -82,57 +83,13 @@ class GraphvizImageCodeDataset(Dataset):
         dot_code = example["graphviz_code"]
 
         image = Image.open(image_path).convert("RGB")
-        if self.transform is not None:
-            image = self.transform(image)  # (3, H, W)
+        image_tensor = self.transform(image)  # (3, H, W)
 
         return {
-            "image": image,
+            "image": image_tensor,
             "graphviz_code": dot_code,
             "image_path": image_path,
         }
-
-
-def get_json_graphviz_json_dataset_trainer(
-    json_path: str = "simple_synthetic_data_gen.json",
-    root_dir: str = "graphviz_rendered_json",
-    image_size: tuple[int, int] = (1024, 1024),
-) -> tuple[GraphvizImageCodeDataset, GraphvizImageCodeDataset]:
-    start_time = time.time()
-
-    # Load JSON
-    with open(json_path, "r") as file:
-        dot_code_list = json.load(file)
-
-    # Wrap data in a HuggingFace dataset
-    hf_dataset = HFDataset.from_dict({"graphviz_code": dot_code_list})
-
-    ds_split = hf_dataset.train_test_split(test_size=0.1, seed=42)
-    train_split = ds_split["train"]
-    test_split = ds_split["test"]
-
-    train_transform = None
-    test_transform = None
-
-    train_dataset = GraphvizImageCodeDataset(
-        hf_split=train_split,
-        split_name="train",
-        root_dir=root_dir,
-        image_size=image_size,
-        transform=train_transform,
-    )
-
-    test_dataset = GraphvizImageCodeDataset(
-        hf_split=test_split,
-        split_name="test",
-        root_dir=root_dir,
-        image_size=image_size,
-        transform=test_transform,
-    )
-
-    end_time = time.time()
-    print(f"JSON data load and render time: {(end_time - start_time):.4f} seconds")
-
-    return train_dataset, test_dataset
 
 
 def get_json_graphviz_json_dataloaders(
@@ -420,59 +377,35 @@ def make_inputs_and_labels_vlm(
     graphviz_code: list[str],
     instruction: str,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    # encoded_image_vectors = model.encode_images(
-    #     images
-    # )  # shape: (batch_size, seq_len * d_model)
+    encoded_image_vectors = model.encode_images(
+        images
+    )  # shape: (batch_size, seq_len * d_model)
 
-    encoded_image_vectors = torch.Tensor([])
+    eot_token = "<|end_of_text|>"
+    prompts = [instruction + code + eot_token for code in graphviz_code]
 
-    eot_token = "<|eot_id|>"
-    full_texts = []
-    response_texts = []
-
-    for code in graphviz_code:
-        message = [
-            {
-                "role": "user",
-                "content": [{"type": "image"}, {"type": "text", "text": instruction}],
-            }
-        ]
-
-        prefix = model.processor.apply_chat_template(
-            message, add_generation_prompt=True
-        )
-
-        response = code + eot_token
-        full_texts.append(prefix + response)
-        response_texts.append(response)
-
-    # Process sequences and images
     inputs = model.processor(
+        text=prompts,
         images=images,
-        text=full_texts,
-        max_length=2048,
+        return_tensors="pt",
+        max_length=1024,
         padding=True,
         truncation=True,
-        add_special_tokens=False,
-        return_tensors="pt",
     ).to(model.device)
 
-    labels = inputs["input_ids"].clone()
+    labels = inputs["input_ids"].clone()  # shape: (batch_size, seq_len)
 
-    for i, response_text in enumerate(response_texts):
-        response_ids = model.tokenizer(
-            response_text, add_special_tokens=False, return_tensors="pt"
-        ).input_ids
+    # Mask instruction tokens in label so loss is only on code
+    instruction_ids = model.tokenizer(
+        [instruction], add_special_tokens=False, return_tensors="pt"
+    ).input_ids.to(model.device)
+    instruction_len = instruction_ids.shape[1]
 
-        response_len = response_ids.shape[1]
-        total_len = inputs["attention_mask"][i].sum().item()
+    labels[:, 0:instruction_len] = -100
 
-        # Mask everything from the start up to the beginning of the response
-        prefix_len = total_len - response_len
-        labels[i, :prefix_len] = -100
-
-    # Mask all padding tokens
-    labels[inputs["attention_mask"] == 0] = -100
+    # Mask padding tokens
+    attention_mask = inputs["attention_mask"]
+    labels[attention_mask == 0] = -100
 
     return inputs, encoded_image_vectors, labels
 
@@ -485,7 +418,7 @@ def make_inputs_and_labels_clip_llama_vlm(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     vit_tokens, vit_attention_mask = model.encode_images(images)
     # shapes: (batch_size, num_patches, d_llama), (batch_size, num_patches)
-    # or, depending on tiling
+    # OR (depending on tiling)
     # shapes: (batch_size, max_seq_len, d_llama), (batch_size, max_seq_len)
 
     batch_size, num_vit_tokens, d_llama = vit_tokens.shape

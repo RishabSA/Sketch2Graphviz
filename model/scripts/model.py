@@ -8,7 +8,7 @@ from torchvision import transforms
 from transformers import (
     BitsAndBytesConfig,
     MllamaForConditionalGeneration,
-    MllamaProcessor,
+    AutoProcessor,
 )
 from peft import PeftModel
 from huggingface_hub import login
@@ -34,7 +34,7 @@ class Sketch2GraphvizVLM(nn.Module):
         self.device = device
         self.quantization = quantization
 
-        self.processor = MllamaProcessor.from_pretrained(llama_model_id)
+        self.processor = AutoProcessor.from_pretrained(llama_model_id)
         self.tokenizer = self.processor.tokenizer
 
         if quantization == "4-bit":
@@ -53,55 +53,53 @@ class Sketch2GraphvizVLM(nn.Module):
                 low_cpu_mem_usage=True,
             )
         elif quantization == "8-bit":
-            bnb_config_8bit = BitsAndBytesConfig(load_in_8bit=True)
-
             self.llama_model = MllamaForConditionalGeneration.from_pretrained(
                 llama_model_id,
                 device_map="auto",
-                quantization_config=bnb_config_8bit,
+                load_in_8bit=True,
                 low_cpu_mem_usage=True,
             )
         elif quantization == "16-bit":
             self.llama_model = MllamaForConditionalGeneration.from_pretrained(
                 llama_model_id,
                 device_map="auto",
-                dtype=torch.float16,
+                torch_dtype=torch.float16,
                 low_cpu_mem_usage=True,
             )
 
     def encode_images(self, images: torch.Tensor | list) -> torch.Tensor:
-        with torch.no_grad():
-            inputs = self.processor(
-                images=images,
-                text=[""] * images.shape[0],
-                add_special_tokens=False,
-                padding=True,
-                return_tensors="pt",
-            ).to(self.device)
+        inputs = self.processor(
+            text=[""] * images.shape[0],
+            images=images,
+            return_tensors="pt",
+            padding=True,
+        ).to(self.device)
 
-            outputs = self.llama_model(
-                **inputs,
-                output_hidden_states=True,
-                use_cache=False,
-            )
+        print(inputs)
 
-            encoded_image_vectors = outputs.hidden_states[
-                -1
-            ]  # shape: (batch_size, seq_len, d_model)
-            attention_mask = inputs[
-                "attention_mask"
-            ].bool()  # shape (batch_size, seq_len)
+        outputs = self.llama_model(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
+            pixel_values=inputs["pixel_values"],
+            output_hidden_states=True,
+            use_cache=False,
+        )
 
-            masked_image_vectors = encoded_image_vectors * attention_mask.unsqueeze(
-                dim=-1
-            )  # shape: (batch_size, seq_len, d_model)
+        encoded_image_vectors = outputs.hidden_states[
+            -1
+        ]  # shape: (batch_size, seq_len, d_model)
+        attention_mask = inputs["attention_mask"].bool()  # shape (batch_size, seq_len)
 
-            masked_image_vectors = masked_image_vectors.reshape(
-                masked_image_vectors.shape[0], -1
-            )  # shape: (batch_size, seq_len * d_model)
+        masked_image_vectors = encoded_image_vectors * attention_mask.unsqueeze(
+            dim=-1
+        )  # shape: (batch_size, seq_len, d_model)
 
-            # L2 normaliztion
-            masked_image_vectors = F.normalize(masked_image_vectors, p=2, dim=-1)
+        masked_image_vectors = masked_image_vectors.reshape(
+            masked_image_vectors.shape[0], -1
+        )  # shape: (batch_size, seq_len * d_model)
+
+        # L2 normaliztion
+        masked_image_vectors = F.normalize(masked_image_vectors, p=2, dim=-1)
 
         return (
             masked_image_vectors.detach().cpu()
@@ -114,38 +112,26 @@ class Sketch2GraphvizVLM(nn.Module):
     ):
         # Use forward for training
 
-        input_texts = []
-        for prompt in prompts:
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image"},
-                        {"type": "text", "text": prompt},
-                    ],
-                }
-            ]
-
-            input_text = self.processor.apply_chat_template(
-                messages, add_generation_prompt=True
-            )
-            input_texts.append(input_text)
-
         inputs = self.processor(
+            text=prompts,
             images=images,
-            text=input_texts,
-            add_special_tokens=False,
-            padding=True,
             return_tensors="pt",
+            padding=True,
         ).to(self.device)
 
-        outputs = self.llama_model(**inputs)
+        print(inputs)
+
+        outputs = self.llama_model(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
+            pixel_values=inputs["pixel_values"],
+        )
 
         return outputs
 
     def generate(
         self,
-        images: torch.Tensor | Image.Image,
+        images: torch.Tensor,
         prompts: list[str],
         max_new_tokens: int = 1024,
         do_sample: bool = True,
@@ -154,32 +140,16 @@ class Sketch2GraphvizVLM(nn.Module):
     ) -> list[str]:
         # Use generate for inference
 
-        input_texts = []
-        for prompt in prompts:
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image"},
-                        {"type": "text", "text": prompt},
-                    ],
-                }
-            ]
-
-            input_text = self.processor.apply_chat_template(
-                messages, add_generation_prompt=True
-            )
-            input_texts.append(input_text)
-
         inputs = self.processor(
+            text=prompts,
             images=images,
-            text=input_texts,
-            add_special_tokens=False,
-            padding=True,
             return_tensors="pt",
+            padding=True,
         ).to(self.device)
 
-        eot_id = self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
+        print(inputs)
+
+        eot_id = self.tokenizer.convert_tokens_to_ids("<|end_of_text|>")
 
         with torch.inference_mode():
             out = self.llama_model.generate(
@@ -191,7 +161,7 @@ class Sketch2GraphvizVLM(nn.Module):
                 eos_token_id=[self.tokenizer.eos_token_id, eot_id],
             )
 
-            sequences = self.processor.batch_decode(
+            sequences = self.tokenizer.batch_decode(
                 out,
                 skip_special_tokens=skip_special_tokens,
                 clean_up_tokenization_spaces=False,
@@ -241,7 +211,11 @@ def load_sketch2graphviz_vlm_local(
         llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
         quantization="4-bit",
         device=device,
-    )
+    ).to(device)
+
+    model.llama_model.gradient_checkpointing_enable()
+    model.llama_model.config.use_cache = False
+    model.llama_model.enable_input_require_grads()
 
     vlm_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_vlm_lora")
     model.llama_model = PeftModel.from_pretrained(
@@ -276,7 +250,11 @@ if __name__ == "__main__":
         llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
         quantization="4-bit",
         device=device,
-    )
+    ).to(device)
+
+    model.llama_model.gradient_checkpointing_enable()
+    model.llama_model.config.use_cache = False
+    model.llama_model.enable_input_require_grads()
 
     print_num_params(model)
 
@@ -288,7 +266,7 @@ if __name__ == "__main__":
     sequences = model.generate(
         images=graphviz_image_tensor,
         prompts=[instruction],
-        max_new_tokens=2048,
+        max_new_tokens=1024,
         do_sample=False,
         temperature=1.0,
         skip_special_tokens=True,

@@ -542,7 +542,11 @@ def load_sketch2graphviz_clip_llama_vlm_local(
         tile_images=False,
         use_cross_attention=False,
         device=device,
-    )
+    ).to(device)
+
+    model.llama_model.gradient_checkpointing_enable()
+    model.llama_model.config.use_cache = False
+    model.llama_model.enable_input_require_grads()
 
     # Load projector weights
     projector_path = os.path.join(model_load_dir, f"epoch_{epoch_load}_proj.pt")
@@ -600,6 +604,10 @@ if __name__ == "__main__":
         use_cross_attention=False,
         device=device,
     )
+
+    model.llama_model.gradient_checkpointing_enable()
+    model.llama_model.config.use_cache = False
+    model.llama_model.enable_input_require_grads()
 
     print_num_params(model)
 
