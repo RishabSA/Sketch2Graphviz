@@ -26,25 +26,21 @@ def predict_graphviz_dot(
     if isinstance(image, str):
         # image is a file path
         img = Image.open(image).convert("RGB")
-        img = (
-            transforms.ToTensor()(img).unsqueeze(dim=0).to(device, dtype=torch.float16)
-        )
     elif isinstance(image, Image.Image):
         img = image.convert("RGB")
-        img = (
-            transforms.ToTensor()(img).unsqueeze(dim=0).to(device, dtype=torch.float16)
-        )
     elif isinstance(image, torch.Tensor):
         if image.dim() == 3:
-            img = image.unsqueeze(dim=0).to(device, dtype=torch.float16)
+            img = image.unsqueeze(dim=0).to(device)
         elif image.dim() == 4:
-            img = image.to(device, dtype=torch.float16)
+            img = image.to(device)
         else:
             raise ValueError("Image must have shape (3, H, W) or (1, 3, H, W)")
     else:
         raise TypeError("image must be a file path, Image.Image, or torch.Tensor")
 
-    with autocast(device_type="cuda", dtype=torch.float16), torch.inference_mode():
+    with autocast(
+        device_type="cuda", dtype=torch.float16, enabled=(device.type == "cuda")
+    ), torch.inference_mode():
         sequences = model.generate(
             images=img,
             prompts=[instruction],
@@ -66,22 +62,20 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = Sketch2GraphvizVLM(
-        vit_model_id="openai/clip-vit-large-patch14-336",
-        llama_model_id="meta-llama/Llama-3.1-8B-Instruct",
-        quantization="4-bit",
-        tile_images=False,
-        use_cross_attention=False,
+        llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
+        quantization="16-bit",
         device=device,
-    )
+    ).to(device)
 
-    model.llama_model.gradient_checkpointing_enable()
-    model.llama_model.config.use_cache = False
-    model.llama_model.enable_input_require_grads()
+    if model.quantization != "16-bit":
+        model.llama_model.gradient_checkpointing_enable()
+        model.llama_model.config.use_cache = False
+        model.llama_model.enable_input_require_grads()
 
     model = load_sketch2graphviz_vlm_local(
-        model=model,
         model_load_dir="checkpoints",
         epoch_load=10,
+        quantization="16-bit",
         device=device,
     )
 
@@ -94,7 +88,7 @@ if __name__ == "__main__":
         model=model,
         image="testing_graphs/graph_1.png",
         instruction=instruction,
-        max_new_tokens=1024,
+        max_new_tokens=2048,
         do_sample=True,
         temperature=1.0,
         device=device,

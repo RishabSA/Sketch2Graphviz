@@ -544,9 +544,10 @@ def load_sketch2graphviz_clip_llama_vlm_local(
         device=device,
     ).to(device)
 
-    model.llama_model.gradient_checkpointing_enable()
-    model.llama_model.config.use_cache = False
-    model.llama_model.enable_input_require_grads()
+    if model.quantization != "16-bit":
+        model.llama_model.gradient_checkpointing_enable()
+        model.llama_model.config.use_cache = False
+        model.llama_model.enable_input_require_grads()
 
     # Load projector weights
     projector_path = os.path.join(model_load_dir, f"epoch_{epoch_load}_proj.pt")
@@ -619,7 +620,7 @@ if __name__ == "__main__":
     sequences = model.generate(
         images=graphviz_image_tensor,
         prompts=[instruction],
-        max_new_tokens=1024,
+        max_new_tokens=2048,
         do_sample=False,
         temperature=1.0,
         skip_special_tokens=True,

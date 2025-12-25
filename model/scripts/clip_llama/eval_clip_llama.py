@@ -119,9 +119,10 @@ if __name__ == "__main__":
         device=device,
     ).to(device)
 
-    model.llama_model.gradient_checkpointing_enable()
-    model.llama_model.config.use_cache = False
-    model.llama_model.enable_input_require_grads()
+    if model.quantization != "16-bit":
+        model.llama_model.gradient_checkpointing_enable()
+        model.llama_model.config.use_cache = False
+        model.llama_model.enable_input_require_grads()
 
     instruction = (
         "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "

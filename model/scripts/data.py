@@ -11,7 +11,7 @@ from datasets import load_dataset, concatenate_datasets, Dataset as HFDataset
 
 from scripts.graphviz_renderer import render_graphviz_dot_code
 from scripts.model import Sketch2GraphvizVLM
-from scripts.model_clip_llama import CLIPLlamaSketch2GraphvizVLM
+from scripts.clip_llama.model_clip_llama import CLIPLlamaSketch2GraphvizVLM
 
 
 class GraphvizImageCodeDataset(Dataset):
@@ -27,7 +27,7 @@ class GraphvizImageCodeDataset(Dataset):
         self.split_name = split_name
         self.root_dir = root_dir
         self.image_size = image_size
-        self.transform = transform or transforms.ToTensor()
+        self.transform = transform
 
         self.split_dir = os.path.join(root_dir, split_name)
         os.makedirs(self.split_dir, exist_ok=True)
@@ -83,10 +83,12 @@ class GraphvizImageCodeDataset(Dataset):
         dot_code = example["graphviz_code"]
 
         image = Image.open(image_path).convert("RGB")
-        image_tensor = self.transform(image)  # (3, H, W)
+
+        if self.transform:
+            image = self.transform(image)
 
         return {
-            "image": image_tensor,
+            "image": image,
             "graphviz_code": dot_code,
             "image_path": image_path,
         }
@@ -130,15 +132,17 @@ def get_json_graphviz_json_dataloaders(
             transforms.RandomApply(
                 [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.1
             ),
-            transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
+            # transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
         ]
     )
 
-    test_transform = transforms.Compose(
-        [
-            transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
-        ]
-    )
+    # test_transform = transforms.Compose(
+    #     [
+    #         transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
+    #     ]
+    # )
+
+    test_transform = None
 
     train_dataset = GraphvizImageCodeDataset(
         hf_split=train_split,
@@ -157,9 +161,13 @@ def get_json_graphviz_json_dataloaders(
     )
 
     def collate_fn(batch: list[dict]) -> dict:
-        images = torch.stack(
-            [item["image"] for item in batch], dim=0
-        )  # shape: (batch_size, 3, H, W)
+        if isinstance(batch[0]["image"], torch.Tensor):
+            images = torch.stack(
+                [item["image"] for item in batch], dim=0
+            )  # shape: (batch_size, 3, H, W)
+        else:
+            images = [item["image"] for item in batch]
+
         codes = [item["graphviz_code"] for item in batch]
         paths = [item["image_path"] for item in batch]
 
@@ -377,35 +385,59 @@ def make_inputs_and_labels_vlm(
     graphviz_code: list[str],
     instruction: str,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    encoded_image_vectors = model.encode_images(
-        images
-    )  # shape: (batch_size, seq_len * d_model)
+    # encoded_image_vectors = model.encode_images(
+    #     images
+    # )  # shape: (batch_size, seq_len * d_model)
 
-    eot_token = "<|end_of_text|>"
-    prompts = [instruction + code + eot_token for code in graphviz_code]
+    encoded_image_vectors = torch.Tensor([])
 
+    eot_token = "<|eot_id|>"
+    full_texts = []
+    response_texts = []
+
+    for code in graphviz_code:
+        message = [
+            {
+                "role": "user",
+                "content": [{"type": "image"}, {"type": "text", "text": instruction}],
+            }
+        ]
+
+        prefix = model.processor.apply_chat_template(
+            message, add_generation_prompt=True
+        )
+
+        response = code + eot_token
+        full_texts.append(prefix + response)
+        response_texts.append(response)
+
+    # Process sequences and images
     inputs = model.processor(
-        text=prompts,
         images=images,
-        return_tensors="pt",
-        max_length=1024,
+        text=full_texts,
+        max_length=2048,
         padding=True,
         truncation=True,
+        add_special_tokens=False,
+        return_tensors="pt",
     ).to(model.device)
 
-    labels = inputs["input_ids"].clone()  # shape: (batch_size, seq_len)
+    labels = inputs["input_ids"].clone()
 
-    # Mask instruction tokens in label so loss is only on code
-    instruction_ids = model.tokenizer(
-        [instruction], add_special_tokens=False, return_tensors="pt"
-    ).input_ids.to(model.device)
-    instruction_len = instruction_ids.shape[1]
+    for i, response_text in enumerate(response_texts):
+        response_ids = model.tokenizer(
+            response_text, add_special_tokens=False, return_tensors="pt"
+        ).input_ids
 
-    labels[:, 0:instruction_len] = -100
+        response_len = response_ids.shape[1]
+        total_len = inputs["attention_mask"][i].sum().item()
 
-    # Mask padding tokens
-    attention_mask = inputs["attention_mask"]
-    labels[attention_mask == 0] = -100
+        # Mask everything from the start up to the beginning of the response
+        prefix_len = total_len - response_len
+        labels[i, :prefix_len] = -100
+
+    # Mask all padding tokens
+    labels[inputs["attention_mask"] == 0] = -100
 
     return inputs, encoded_image_vectors, labels
 
@@ -418,7 +450,7 @@ def make_inputs_and_labels_clip_llama_vlm(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     vit_tokens, vit_attention_mask = model.encode_images(images)
     # shapes: (batch_size, num_patches, d_llama), (batch_size, num_patches)
-    # OR (depending on tiling)
+    # or, depending on tiling
     # shapes: (batch_size, max_seq_len, d_llama), (batch_size, max_seq_len)
 
     batch_size, num_vit_tokens, d_llama = vit_tokens.shape
@@ -430,7 +462,7 @@ def make_inputs_and_labels_clip_llama_vlm(
         prompts,
         padding=True,
         truncation=True,
-        max_length=1024,
+        max_length=2048,
         return_tensors="pt",
     ).to(model.device)
 
@@ -498,9 +530,15 @@ def make_inputs_and_labels_clip_llama_vlm(
 if __name__ == "__main__":
     batch_size = 1
 
-    train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
+    # train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
+    #     batch_size=batch_size,
+    #     root_dir="graphviz_rendered",
+    #     image_size=(768, 768),  # (1024, 1024)
+    # )
+
+    train_dataloader, test_dataloader = get_json_graphviz_json_dataloaders(
+        json_path="simple_synthetic_data_gen.json",
         batch_size=batch_size,
-        root_dir="graphviz_rendered",
-        image_size=(768, 768),  # (512, 512), (1024, 1024)
+        root_dir="graphviz_rendered_json",
+        image_size=(768, 768),  # (1024, 1024)
     )
-    print(len(train_dataloader), len(val_dataloader), len(test_dataloader))

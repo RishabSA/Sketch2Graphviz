@@ -34,7 +34,8 @@ def add_lora_to_VLM(
     llama_model = model.llama_model
 
     # k-bit training (QLoRA)
-    llama_model = prepare_model_for_kbit_training(llama_model)
+    if model.quantization != "16-bit":
+        llama_model = prepare_model_for_kbit_training(llama_model)
 
     target_modules = [
         "q_proj",
@@ -47,8 +48,6 @@ def add_lora_to_VLM(
         "fc1",
         "fc2",
         "multi_modal_projector",
-        "mm_projector",
-        "vision_projector",
     ]
 
     lora_config = LoraConfig(
@@ -85,28 +84,19 @@ def finetune_vlm_lora(
     model_save_dir: str = "checkpoints",
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> tuple[Sketch2GraphvizVLM, list[float], list[float]]:
-    # Freeze base model for LoRA
-    for param in model.llama_model.parameters():
-        param.requires_grad = False
-
     model = add_lora_to_VLM(model, rank=rank, alpha=(2 * rank), dropout=lora_dropout)
     print_num_params(model)
 
-    # Optimizer over trainable params
-    trainable_params = [param for param in model.parameters() if param.requires_grad]
+    trainable_params = [
+        param
+        for name, param in model.named_parameters()
+        if param.requires_grad and "lora_" in name
+    ]
 
     optimizer = torch.optim.AdamW(
-        [
-            {
-                "params": [
-                    param
-                    for name, param in model.named_parameters()
-                    if param.requires_grad and "lora_" in name
-                ],
-                "lr": lr_lora,
-                "weight_decay": weight_decay_lora,
-            },
-        ],
+        params=trainable_params,
+        lr=lr_lora,
+        weight_decay=weight_decay_lora,
     )
 
     scaler = GradScaler(enabled=True)
@@ -124,23 +114,26 @@ def finetune_vlm_lora(
         progress_bar = tqdm(train_dataloader, desc=f"Training epoch {epoch + 1}")
 
         for batch in progress_bar:
-            images = batch["images"].to(device)  # shape: (batch_size, 3, H, W)
+            images = batch["images"]
             graphviz_code = batch["graphviz_code"]
+
+            if isinstance(images, torch.Tensor):
+                images = images.to(device)  # shape: (batch_size, 3, H, W)
 
             optimizer.zero_grad()
 
-            with autocast(device_type="cuda", dtype=torch.float16):
-                inputs, encoded_image_vectors, labels = make_inputs_and_labels_vlm(
-                    model=model,
-                    images=images,
-                    graphviz_code=graphviz_code,
-                    instruction=instruction,
-                )
+            inputs, encoded_image_vectors, labels = make_inputs_and_labels_vlm(
+                model=model,
+                images=images,
+                graphviz_code=graphviz_code,
+                instruction=instruction,
+            )
 
+            with autocast(
+                device_type="cuda", dtype=torch.float16, enabled=(device.type == "cuda")
+            ):
                 outputs = model.llama_model(
-                    input_ids=inputs["input_ids"],
-                    attention_mask=inputs["attention_mask"],
-                    pixel_values=inputs["pixel_values"],
+                    **inputs,
                     labels=labels,
                 )
 
@@ -227,13 +220,14 @@ if __name__ == "__main__":
 
     model = Sketch2GraphvizVLM(
         llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
-        quantization="4-bit",
+        quantization="16-bit",
         device=device,
     ).to(device)
 
-    model.llama_model.gradient_checkpointing_enable()
-    model.llama_model.config.use_cache = False
-    model.llama_model.enable_input_require_grads()
+    if model.quantization != "16-bit":
+        model.llama_model.gradient_checkpointing_enable()
+        model.llama_model.config.use_cache = False
+        model.llama_model.enable_input_require_grads()
 
     instruction = (
         "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "
