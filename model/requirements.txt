@@ -15,3 +15,5 @@ accelerate
 peft
 Pillow
 openai
+psycopg2-binary
+pgvector

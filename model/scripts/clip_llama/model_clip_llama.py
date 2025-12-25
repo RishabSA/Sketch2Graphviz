@@ -228,7 +228,7 @@ class CLIPLlamaSketch2GraphvizVLM(nn.Module):
             )
             self.image_text_adapter.to(device)
 
-    def encode_images(
+    def embed_images(
         self, images: torch.Tensor | list
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # images shape: (batch_size, 3, 336, 336) OR list of tensors
@@ -358,7 +358,7 @@ class CLIPLlamaSketch2GraphvizVLM(nn.Module):
         # images shape: (batch_size, 3, 336, 336)
         # Use forward for training (only returns single Llama output)
 
-        vit_tokens, vit_attention_mask = self.encode_images(images)
+        vit_tokens, vit_attention_mask = self.embed_images(images)
         # shapes: (batch_size, num_patches, d_llama), (batch_size, num_patches)
         # OR (depending on tiling)
         # shapes: (batch_size, max_seq_len, d_llama), (batch_size, max_seq_len)
@@ -420,7 +420,7 @@ class CLIPLlamaSketch2GraphvizVLM(nn.Module):
         # Use generate for inference
 
         with torch.inference_mode():
-            vit_tokens, vit_attention_mask = self.encode_images(images)
+            vit_tokens, vit_attention_mask = self.embed_images(images)
             # shapes: (batch_size, num_patches, d_llama), (batch_size, num_patches)
             # OR (depending on tiling)
             # shapes: (batch_size, max_seq_len, d_llama), (batch_size, max_seq_len)

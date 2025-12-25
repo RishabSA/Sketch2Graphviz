@@ -9,7 +9,7 @@ from huggingface_hub import login
 
 from scripts.model import Sketch2GraphvizVLM
 from scripts.data import (
-    get_graphviz_hf_dataloaders,
+    get_json_graphviz_json_dataloaders,
     make_inputs_and_labels_vlm,
 )
 
@@ -99,10 +99,11 @@ if __name__ == "__main__":
 
     batch_size = 1
 
-    train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
+    train_dataloader, test_dataloader = get_json_graphviz_json_dataloaders(
+        json_path="simple_synthetic_data_gen.json",
         batch_size=batch_size,
-        root_dir="graphviz_rendered",
-        image_size=(768, 768),  # (512, 512), (1024, 1024)
+        root_dir="graphviz_rendered_json",
+        image_size=(768, 768),  # (1024, 1024)
     )
 
     model = Sketch2GraphvizVLM(

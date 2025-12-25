@@ -384,13 +384,7 @@ def make_inputs_and_labels_vlm(
     images: torch.Tensor,
     graphviz_code: list[str],
     instruction: str,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    # encoded_image_vectors = model.encode_images(
-    #     images
-    # )  # shape: (batch_size, seq_len * d_model)
-
-    encoded_image_vectors = torch.Tensor([])
-
+) -> tuple[torch.Tensor, torch.Tensor]:
     eot_token = "<|eot_id|>"
     full_texts = []
     response_texts = []
@@ -439,7 +433,7 @@ def make_inputs_and_labels_vlm(
     # Mask all padding tokens
     labels[inputs["attention_mask"] == 0] = -100
 
-    return inputs, encoded_image_vectors, labels
+    return inputs, labels
 
 
 def make_inputs_and_labels_clip_llama_vlm(
@@ -448,7 +442,7 @@ def make_inputs_and_labels_clip_llama_vlm(
     graphviz_code: list[str],
     instruction: str,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    vit_tokens, vit_attention_mask = model.encode_images(images)
+    vit_tokens, vit_attention_mask = model.embed_images(images)
     # shapes: (batch_size, num_patches, d_llama), (batch_size, num_patches)
     # or, depending on tiling
     # shapes: (batch_size, max_seq_len, d_llama), (batch_size, max_seq_len)

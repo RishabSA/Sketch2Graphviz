@@ -69,15 +69,37 @@ class Sketch2GraphvizVLM(nn.Module):
                 low_cpu_mem_usage=True,
             )
 
-    def encode_images(self, images: torch.Tensor | list) -> torch.Tensor:
-        with torch.no_grad():
-            batch_size = len(images) if isinstance(images, list) else images.shape[0]
+    def embed_images(self, images: torch.Tensor | list) -> torch.Tensor:
+        batch_size = len(images) if isinstance(images, list) else images.shape[0]
 
+        prompt = "You are an image encoder. Embed this Graphviz diagram for retrieval."
+
+        input_texts = []
+        for i in range(batch_size):
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ]
+
+            input_text = self.processor.apply_chat_template(
+                messages,
+                add_generation_prompt=False,
+            )
+
+            input_texts.append(input_text)
+
+        with torch.no_grad():
             inputs = self.processor(
                 images=images,
-                text=[""] * batch_size,
-                return_tensors="pt",
+                text=input_texts,
+                add_special_tokens=False,
                 padding=True,
+                return_tensors="pt",
             ).to(self.device)
 
             outputs = self.llama_model(
@@ -86,27 +108,27 @@ class Sketch2GraphvizVLM(nn.Module):
                 use_cache=False,
             )
 
-            encoded_image_vectors = outputs.hidden_states[
+            # Get the last hidden state
+            hidden_state = outputs.hidden_states[
                 -1
             ]  # shape: (batch_size, seq_len, d_model)
-            attention_mask = inputs[
-                "attention_mask"
-            ].bool()  # shape (batch_size, seq_len)
 
-            masked_image_vectors = encoded_image_vectors * attention_mask.unsqueeze(
-                dim=-1
+            attention_mask = (
+                inputs["attention_mask"].unsqueeze(dim=-1).to(hidden_state.dtype)
+            )  # shape (batch_size, seq_len, 1)
+
+            masked_hidden_state = (
+                hidden_state * attention_mask
             )  # shape: (batch_size, seq_len, d_model)
 
-            masked_image_vectors = masked_image_vectors.reshape(
-                masked_image_vectors.shape[0], -1
-            )  # shape: (batch_size, seq_len * d_model)
+            mean_pooled_vectors = masked_hidden_state.sum(dim=1) / attention_mask.sum(
+                dim=1
+            )  # shape: (batch_size, d_model)
 
             # L2 normaliztion
-            masked_image_vectors = F.normalize(masked_image_vectors, p=2, dim=-1)
+            mean_pooled_vectors = F.normalize(mean_pooled_vectors, p=2, dim=-1)
 
-        return (
-            masked_image_vectors.detach().cpu()
-        )  # shape: (batch_size, seq_len * d_model)
+        return mean_pooled_vectors.detach().cpu()  # shape: (batch_size, d_model)
 
     def forward(
         self,
