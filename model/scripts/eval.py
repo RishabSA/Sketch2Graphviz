@@ -50,7 +50,7 @@ def evaluate_vlm(
         if isinstance(images, torch.Tensor):
             images = images.to(device)  # shape: (batch_size, 3, H, W)
 
-        inputs, encoded_image_vectors, labels = make_inputs_and_labels_vlm(
+        inputs, labels = make_inputs_and_labels_vlm(
             model=model,
             images=images,
             graphviz_code=graphviz_code,
@@ -78,7 +78,6 @@ def evaluate_vlm(
             images,
             graphviz_code,
             inputs,
-            encoded_image_vectors,
             labels,
             outputs,
             loss,
