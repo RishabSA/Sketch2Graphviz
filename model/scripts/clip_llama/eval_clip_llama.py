@@ -7,7 +7,7 @@ from tqdm.auto import tqdm
 from peft import PeftModel
 from huggingface_hub import login
 
-from scripts.model_clip_llama import CLIPLlamaSketch2GraphvizVLM
+from scripts.clip_llama.model_clip_llama import CLIPLlamaSketch2GraphvizVLM
 from scripts.data import (
     get_graphviz_hf_dataloaders,
     make_inputs_and_labels_clip_llama_vlm,

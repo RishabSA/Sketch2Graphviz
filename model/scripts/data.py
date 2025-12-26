@@ -386,24 +386,19 @@ def make_inputs_and_labels_vlm(
     instruction: str,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     eot_token = "<|eot_id|>"
-    full_texts = []
-    response_texts = []
 
-    for code in graphviz_code:
-        message = [
-            {
-                "role": "user",
-                "content": [{"type": "image"}, {"type": "text", "text": instruction}],
-            }
-        ]
+    prefix_message = [
+        {
+            "role": "user",
+            "content": [{"type": "image"}, {"type": "text", "text": instruction}],
+        }
+    ]
 
-        prefix = model.processor.apply_chat_template(
-            message, add_generation_prompt=True
-        )
+    prefix = model.processor.apply_chat_template(
+        prefix_message, add_generation_prompt=True
+    )
 
-        response = code + eot_token
-        full_texts.append(prefix + response)
-        response_texts.append(response)
+    full_texts = [prefix + code + eot_token for code in graphviz_code]
 
     # Process sequences and images
     inputs = model.processor(
@@ -418,17 +413,13 @@ def make_inputs_and_labels_vlm(
 
     labels = inputs["input_ids"].clone()
 
-    for i, response_text in enumerate(response_texts):
-        response_ids = model.tokenizer(
-            response_text, add_special_tokens=False, return_tensors="pt"
-        ).input_ids
+    prefix_ids = model.tokenizer(prefix, add_special_tokens=False).input_ids
+    prefix_len = len(prefix_ids)
 
-        response_len = response_ids.shape[1]
-        total_len = inputs["attention_mask"][i].sum().item()
-
-        # Mask everything from the start up to the beginning of the response
-        prefix_len = total_len - response_len
-        labels[i, :prefix_len] = -100
+    # Mask the prefix for every sample
+    seq_len = labels.shape[1]
+    mask_len = min(prefix_len, seq_len)
+    labels[:, :mask_len] = -100
 
     # Mask all padding tokens
     labels[inputs["attention_mask"] == 0] = -100

@@ -76,7 +76,7 @@ if __name__ == "__main__":
         llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
         quantization="16-bit",
         device=device,
-    ).to(device)
+    )
 
     if model.quantization != "16-bit":
         model.llama_model.gradient_checkpointing_enable()

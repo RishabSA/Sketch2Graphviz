@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from "react";
+import * as Viz from "@viz-js/viz";
+import React, { useEffect, useRef, useState } from "react";
 import {
 	ArrowRight,
+	Copy,
+	Download,
 	GitHub,
 	Globe,
 	Info,
@@ -12,7 +15,14 @@ import {
 } from "react-feather";
 import { Bounce, ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { GraphvizRenderer } from "./components/GraphvizRenderer";
+import { GraphSketchpad } from "./components/GraphSketchpad";
+
+const defaultGraphvizCode = `digraph G {
+    rankdir=LR;
+    A -> B;
+    B -> C;
+    A -> C [label="shortcut"];
+}`;
 
 function App() {
 	const [theme, setTheme] = useState(() => {
@@ -21,6 +31,9 @@ function App() {
 	const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+	const [graphvizCode, setGraphvizCode] = useState(defaultGraphvizCode);
+	const [error, setError] = useState(null);
+	const graphvizContainerRef = useRef(null);
 
 	// Apply the theme whenever it changes
 	useEffect(() => {
@@ -51,6 +64,47 @@ function App() {
 		}
 		return () => (document.body.style.overflow = "");
 	}, [loading]);
+
+	useEffect(() => {
+		let cancelled = false;
+
+		const updateGraphPreview = async () => {
+			try {
+				setError(null);
+				const viz = await Viz.instance();
+				const svgElement = await viz.renderSVGElement(graphvizCode);
+
+				if (cancelled || !graphvizContainerRef.current) return;
+
+				// Clear old content and add new SVG
+				graphvizContainerRef.current.innerHTML = "";
+				graphvizContainerRef.current.appendChild(svgElement);
+			} catch (e) {
+				if (!cancelled) {
+					setError(e.message ?? "Failed to render graph.");
+					if (graphvizContainerRef.current)
+						graphvizContainerRef.current.innerHTML = "";
+				}
+			}
+		};
+
+		updateGraphPreview();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [graphvizCode]);
+
+	const handleCopyGraphvizCode = async () => {
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			try {
+				await navigator.clipboard.writeText(graphvizCode);
+				alert("Text copied to clipboard!");
+			} catch (err) {
+				console.error("Failed to copy text: ", err);
+			}
+		}
+	};
 
 	return (
 		<>
@@ -215,9 +269,9 @@ function App() {
 						<img
 							src="/assets/vite.svg"
 							alt="Sketch2Graphviz Icon"
-							className="h-16 w-auto"
+							className="h-10 w-auto"
 						/>
-						<h1 className="text-5xl font-semibold text-neutral-800 dark:text-neutral-200">
+						<h1 className="text-3xl font-semibold text-neutral-800 dark:text-neutral-200">
 							Sketch2Graphviz
 						</h1>
 					</div>
@@ -226,7 +280,7 @@ function App() {
 						<div>
 							<button
 								onClick={() => setThemeDropdownOpen(o => !o)}
-								className="cursor-pointer text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-900 border-2 border-neutral-300 dark:border-neutral-600 hover:bg-neutral-200 dark:hover:bg-neutral-800 font-medium rounded-lg text-sm px-5 py-2.5 inline-flex items-center">
+								className="cursor-pointer text-neutral-700 dark:text-neutral-300 bg-white dark:bg-neutral-900 border-2 border-neutral-200 dark:border-neutral-600 hover:bg-neutral-200 dark:hover:bg-neutral-800 font-medium rounded-lg text-sm px-5 py-2.5 inline-flex items-center">
 								{theme === "Light" && <Sun size={16} className="mr-2" />}
 								{theme === "Dark" && <Moon size={16} className="mr-2" />}
 								{theme === "System" && <Monitor size={16} className="mr-2" />}
@@ -275,7 +329,7 @@ function App() {
 						<button
 							aria-label="Open information panel"
 							title="Info"
-							className="cursor-pointer h-10 w-10 text-neutral-500 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-900 border-2 border-neutral-300 dark:border-neutral-600 hover:bg-neutral-200 dark:hover:bg-neutral-800 flex items-center justify-center rounded-lg transition-colors"
+							className="cursor-pointer h-10 w-10 text-neutral-500 dark:text-neutral-300 bg-white dark:bg-neutral-900 border-2 border-neutral-200 dark:border-neutral-600 hover:bg-neutral-200 dark:hover:bg-neutral-800 flex items-center justify-center rounded-lg transition-colors"
 							onClick={() => setIsInfoModalOpen(true)}>
 							<div className="flex items-center">
 								<Info
@@ -288,8 +342,54 @@ function App() {
 					</div>
 				</div>
 
-				<div className="w-full flex justify-center">
-					<GraphvizRenderer />
+				<div className="w-full h-full flex flex-col md:flex-row gap-4 bg-neutral-100 dark:bg-neutral-900 rounded-xl text-neutral-900 dark:text-neutral-300">
+					<GraphSketchpad />
+					<div className="w-full md:w-1/3 flex flex-col min-h-0 mt-6 md:mt-0 gap-4">
+						<h2 className="text-xl font-semibold">Generated Graphviz Code</h2>
+
+						<div
+							className="w-full overflow-hidden rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-md"
+							style={{ aspectRatio: "1 / 1" }}>
+							<textarea
+								className="h-full w-full font-mono p-3 text-sm resize-none bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+								value={graphvizCode}
+								onChange={e => setGraphvizCode(e.target.value)}
+								spellCheck={false}
+							/>
+						</div>
+
+						{error && (
+							<p className="text-xs text-red-500">Graphviz Error: {error}</p>
+						)}
+
+						<button
+							type="button"
+							onClick={handleCopyGraphvizCode}
+							className="w-fit cursor-pointer flex items-center gap-2 rounded-xl bg-white px-4 py-4 text-sm font-bold text-neutral-900 transition-all hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-800">
+							<Copy size={16} />
+							Copy Graphviz Code
+						</button>
+					</div>
+
+					<div className="w-full md:w-1/3 flex flex-col min-h-0 mt-6 md:mt-0 gap-4">
+						<h2 className="text-xl font-semibold">Graphviz Preview</h2>
+
+						<div
+							className="w-full overflow-auto rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 shadow-md"
+							style={{ aspectRatio: "1 / 1" }}>
+							<div
+								ref={graphvizContainerRef}
+								className="w-full h-full flex items-center justify-center"
+							/>
+						</div>
+
+						<button
+							type="button"
+							className="w-fit cursor-pointer flex items-center gap-2 rounded-xl bg-white px-4 py-4 text-sm font-bold text-neutral-900 transition-all hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-800">
+							<Download size={16} />
+							Download Graphviz Graph
+						</button>
+					</div>
 				</div>
 			</div>
 		</>

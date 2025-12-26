@@ -267,9 +267,10 @@ def load_sketch2graphviz_vlm_local(
         device=device,
     ).to(device)
 
-    model.llama_model.gradient_checkpointing_enable()
-    model.llama_model.config.use_cache = False
-    model.llama_model.enable_input_require_grads()
+    if model.quantization != "16-bit":
+        model.llama_model.gradient_checkpointing_enable()
+        model.llama_model.config.use_cache = False
+        model.llama_model.enable_input_require_grads()
 
     vlm_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_vlm_lora")
     model.llama_model = PeftModel.from_pretrained(
@@ -279,7 +280,6 @@ def load_sketch2graphviz_vlm_local(
         torch_dtype=torch.float16,
     )
 
-    model.llama_model.to(device)
     model.device = device
     model.eval()
 
@@ -304,7 +304,7 @@ if __name__ == "__main__":
         llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
         quantization="16-bit",
         device=device,
-    ).to(device)
+    )
 
     if model.quantization != "16-bit":
         model.llama_model.gradient_checkpointing_enable()

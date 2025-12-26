@@ -99,7 +99,7 @@ def finetune_vlm_lora(
         weight_decay=weight_decay_lora,
     )
 
-    scaler = GradScaler(enabled=True)
+    scaler = GradScaler(enabled=(device.type == "cuda"))
 
     model.train()
     model.llama_model.train()
@@ -222,7 +222,7 @@ if __name__ == "__main__":
         llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
         quantization="16-bit",
         device=device,
-    ).to(device)
+    )
 
     if model.quantization != "16-bit":
         model.llama_model.gradient_checkpointing_enable()

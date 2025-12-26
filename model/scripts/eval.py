@@ -25,14 +25,14 @@ def evaluate_vlm(
 ) -> float:
     if model_load_dir is not None and epoch_load is not None:
         vlm_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_vlm_lora")
-        model.llama_model = PeftModel.from_pretrained(
-            model.llama_model,
-            vlm_lora_dir,
-            device_map="auto",
-            torch_dtype=torch.float16,
-        )
+        if not isinstance(model.llama_model, PeftModel):
+            model.llama_model = PeftModel.from_pretrained(
+                model.llama_model,
+                vlm_lora_dir,
+                device_map="auto",
+                torch_dtype=torch.float16,
+            )
 
-        model.llama_model.to(device)
         model.device = device
 
         print(f"Loaded VLM LoRA from: {vlm_lora_dir}")
@@ -110,7 +110,7 @@ if __name__ == "__main__":
         llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
         quantization="16-bit",
         device=device,
-    ).to(device)
+    )
 
     if model.quantization != "16-bit":
         model.llama_model.gradient_checkpointing_enable()
