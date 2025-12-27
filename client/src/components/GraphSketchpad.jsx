@@ -26,8 +26,9 @@ const DrawAction = {
 	Select: "select",
 	Rectangle: "rectangle",
 	Circle: "circle",
-	Pen: "freedraw",
 	Arrow: "arrow",
+	Pen: "freedraw",
+	Eraser: "eraser",
 };
 
 const PaintOptions = [
@@ -56,6 +57,7 @@ const PaintOptions = [
 		label: "Pen",
 		icon: <Edit3 size={16} />,
 	},
+	{ id: DrawAction.Eraser, label: "Eraser", icon: <Trash2 size={16} /> },
 ];
 
 const downloadURI = (uri, name) => {
@@ -67,12 +69,15 @@ const downloadURI = (uri, name) => {
 	document.body.removeChild(link);
 };
 
-export const GraphSketchpad = () => {
+export const GraphSketchpad = ({ convertToGraphviz }) => {
 	const [color, setColor] = useState("#000000");
 	const [drawAction, setDrawAction] = useState(DrawAction.Pen);
 	const [canvasSize, setCanvasSize] = useState(768);
 
+	const [strokeWidth, setStrokeWidth] = useState(4);
+
 	const [pens, setPens] = useState([]);
+	const [erasers, setErasers] = useState([]);
 	const [rectangles, setRectangles] = useState([]);
 	const [circles, setCircles] = useState([]);
 	const [arrows, setArrows] = useState([]);
@@ -125,6 +130,7 @@ export const GraphSketchpad = () => {
 		setRectangles([]);
 		setCircles([]);
 		setPens([]);
+		setErasers([]);
 		setArrows([]);
 		setImage(undefined);
 
@@ -161,18 +167,29 @@ export const GraphSketchpad = () => {
 		currentShapeRef.current = id;
 
 		if (drawAction === DrawAction.Pen) {
-			setPens(prev => [...prev, { id, points: [x, y], color }]);
+			setPens(prev => [
+				...prev,
+				{ id, points: [x, y], color, width: strokeWidth },
+			]);
+		} else if (drawAction === DrawAction.Eraser) {
+			setErasers(prev => [...prev, { id, points: [x, y], width: strokeWidth }]);
 		} else if (drawAction === DrawAction.Circle) {
-			setCircles(prev => [...prev, { id, radius: 1, x, y, color }]);
+			setCircles(prev => [
+				...prev,
+				{ id, radius: 1, x, y, color, width: strokeWidth },
+			]);
 		} else if (drawAction === DrawAction.Rectangle) {
 			setRectangles(prev => [
 				...prev,
-				{ id, height: 1, width: 1, x, y, color },
+				{ id, height: 1, width: 1, x, y, color, strokeWidth: strokeWidth },
 			]);
 		} else if (drawAction === DrawAction.Arrow) {
-			setArrows(prev => [...prev, { id, points: [x, y, x, y], color }]);
+			setArrows(prev => [
+				...prev,
+				{ id, points: [x, y, x, y], color, width: strokeWidth },
+			]);
 		}
-	}, [drawAction, color]);
+	}, [drawAction, color, strokeWidth]);
 
 	const onStageMouseMove = useCallback(() => {
 		if (drawAction === DrawAction.Select || !isPaintRef.current) return;
@@ -187,6 +204,10 @@ export const GraphSketchpad = () => {
 
 		if (drawAction === DrawAction.Pen) {
 			setPens(prev =>
+				prev.map(s => (s.id === id ? { ...s, points: [...s.points, x, y] } : s))
+			);
+		} else if (drawAction === DrawAction.Eraser) {
+			setErasers(prev =>
 				prev.map(s => (s.id === id ? { ...s, points: [...s.points, x, y] } : s))
 			);
 		} else if (drawAction === DrawAction.Circle) {
@@ -264,7 +285,9 @@ export const GraphSketchpad = () => {
 		<div className="w-full md:w-1/3 flex flex-col min-h-0">
 			<h2 className="mb-4 text-xl font-semibold">Sketch your Graph</h2>
 			<div
-				className="w-full overflow-hidden rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 shadow-md"
+				className={`w-full overflow-hidden rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:cursor-crosshair ${
+					drawAction === DrawAction.Eraser ? "cursor-cell" : "cursor-crosshair"
+				}`}
 				style={{ aspectRatio: "1 / 1" }}>
 				<Stage
 					width={canvasSize}
@@ -304,7 +327,7 @@ export const GraphSketchpad = () => {
 								points={arrow.points}
 								fill={arrow.color}
 								stroke={arrow.color}
-								strokeWidth={4}
+								strokeWidth={arrow.width}
 								onClick={onShapeClick}
 								draggable={isDraggable}
 							/>
@@ -319,7 +342,7 @@ export const GraphSketchpad = () => {
 								width={rectangle.width}
 								stroke={rectangle.color}
 								id={rectangle.id}
-								strokeWidth={4}
+								strokeWidth={rectangle.strokeWidth}
 								onClick={onShapeClick}
 								draggable={isDraggable}
 							/>
@@ -333,7 +356,7 @@ export const GraphSketchpad = () => {
 								y={circle.y}
 								radius={circle.radius}
 								stroke={circle.color}
-								strokeWidth={4}
+								strokeWidth={circle.width}
 								onClick={onShapeClick}
 								draggable={isDraggable}
 							/>
@@ -346,10 +369,23 @@ export const GraphSketchpad = () => {
 								lineCap="round"
 								lineJoin="round"
 								stroke={pen.color}
-								strokeWidth={4}
+								strokeWidth={pen.width}
 								points={pen.points}
 								onClick={onShapeClick}
 								draggable={isDraggable}
+							/>
+						))}
+
+						{erasers.map(eraser => (
+							<KonvaLine
+								key={eraser.id}
+								points={eraser.points}
+								stroke="black"
+								strokeWidth={eraser.width}
+								lineCap="round"
+								lineJoin="round"
+								globalCompositeOperation="destination-out"
+								listening={false}
 							/>
 						))}
 
@@ -357,86 +393,106 @@ export const GraphSketchpad = () => {
 					</Layer>
 				</Stage>
 			</div>
-			<div className="flex flex-col gap-2 mt-4 items-center">
-				<div className="flex gap-4">
-					<div className="flex items-center overflow-hidden rounded-xl border-2 border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 w-fit">
-						{PaintOptions.map(({ id, label, icon }) => {
-							const active = id === drawAction;
-							return (
-								<button
-									key={id}
-									type="button"
-									title={label}
-									onClick={() => setDrawAction(id)}
-									className={`flex items-center gap-2 px-4 py-4 text-md font-semibold transition-all duration-300 rounded-xl cursor-pointer ${
-										active
-											? "bg-blue-600 text-white"
-											: "bg-white text-neutral-900 hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
-									}`}>
-									{icon}
-									{/* <span className="hidden sm:inline">{label}</span> */}
-								</button>
-							);
-						})}
+			<div className="mt-4 w-full flex flex-col items-center gap-3">
+				<div className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+					<div className="flex items-center justify-center">
+						<div className="flex items-center overflow-hidden rounded-2xl border-2 border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+							{PaintOptions.map(({ id, label, icon }) => {
+								const active = id === drawAction;
+								return (
+									<button
+										key={id}
+										type="button"
+										title={label}
+										onClick={() => setDrawAction(id)}
+										className={`flex items-center justify-center px-4 py-4 text-md font-semibold transition-all duration-300 cursor-pointer ${
+											active
+												? "bg-blue-600 text-white"
+												: "bg-white text-neutral-900 hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
+										}`}>
+										{icon}
+									</button>
+								);
+							})}
 
-						<div className="flex items-center gap-2 px-3 py-2">
-							<label
-								className="h-8 w-8 rounded-lg cursor-pointer overflow-hidden transition-all duration-300"
-								style={{ backgroundColor: color }}
-								title="Stroke Color">
-								<input
-									type="color"
-									value={color}
-									onChange={e => setColor(e.target.value)}
-									className="opacity-0 w-full h-full cursor-pointer"
-									aria-label="Stroke Color"
-								/>
-							</label>
-							{/* <span className="hidden text-md text-neutral-900 dark:text-neutral-100 sm:inline">
-							{color}
-						</span> */}
+							<div className="flex items-center gap-2 px-3 py-2 border-l-2 border-neutral-200 dark:border-neutral-800">
+								<label
+									className="h-8 w-8 rounded-lg cursor-pointer overflow-hidden transition-all duration-300"
+									style={{ backgroundColor: color }}
+									title="Stroke Color">
+									<input
+										type="color"
+										value={color}
+										onChange={e => setColor(e.target.value)}
+										className="opacity-0 w-full h-full cursor-pointer"
+										aria-label="Stroke Color"
+									/>
+								</label>
+							</div>
+
+							<button
+								type="button"
+								onClick={onClear}
+								title="Clear"
+								className="flex items-center justify-center px-4 py-4 text-md font-semibold transition-all duration-300 cursor-pointer bg-white text-neutral-900 hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 border-l-2 border-neutral-200 dark:border-neutral-800">
+								<Trash2 size={16} />
+							</button>
 						</div>
-
-						<button
-							type="button"
-							onClick={onClear}
-							title="Clear"
-							className="flex items-center gap-2 px-4 py-4 text-md font-semibold transition-all duration-300 rounded-xl cursor-pointer bg-white text-neutral-900 hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800">
-							<Trash2 size={16} />
-							{/* <span className="hidden sm:inline">Clear</span> */}
-						</button>
 					</div>
-					<div className="flex items-center gap-1">
+
+					<div className="flex items-center justify-center gap-2">
 						<input
 							type="file"
 							ref={fileRef}
 							onChange={onImportImageSelect}
-							style={{ display: "none" }}
+							className="hidden"
 							accept="image/*"
 						/>
 
 						<button
 							type="button"
 							onClick={onImportImageClick}
-							className="cursor-pointer flex items-center gap-2 rounded-xl bg-white px-4 py-4 text-sm font-bold text-neutral-900 transition-all hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-800">
+							className="cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-4 text-sm font-bold text-neutral-900 transition-all hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-800">
 							<Upload size={16} />
-							{/* Import Image */}
 						</button>
 
 						<button
 							type="button"
 							onClick={onDownloadSketchClick}
-							className="cursor-pointer flex items-center gap-2 rounded-xl bg-white px-4 py-4 text-sm font-bold text-neutral-900 transition-all hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-800">
+							className="cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-4 text-sm font-bold text-neutral-900 transition-all hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-800">
 							<Download size={16} />
-							{/* Download Sketch */}
 						</button>
 					</div>
 				</div>
 
+				<div className="w-full max-w-md rounded-xl border-2 border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 px-4 py-3">
+					<div className="flex items-center justify-between">
+						<p className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+							{drawAction === "eraser" ? "Eraser Size" : "Stroke Size"}
+						</p>
+						<p className="text-sm text-neutral-600 dark:text-neutral-300">
+							{strokeWidth}px
+						</p>
+					</div>
+
+					<input
+						type="range"
+						min={1}
+						max={40}
+						value={strokeWidth}
+						onChange={e => setStrokeWidth(Number(e.target.value))}
+						className="mt-2 w-full accent-blue-600"
+					/>
+
+					<div className="mt-1 flex justify-between text-xs text-neutral-500 dark:text-neutral-400">
+						<span>Thin</span>
+						<span>Thick</span>
+					</div>
+				</div>
 				<button
 					type="button"
-					onClick={onDownloadSketchClick}
-					className="cursor-pointer flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700 border-2 border-neutral-200 dark:border-neutral-800">
+					onClick={convertToGraphviz}
+					className="w-full max-w-md cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700">
 					<Code size={16} />
 					Convert to Graphviz
 				</button>

@@ -17,3 +17,6 @@ Pillow
 openai
 psycopg2-binary
 pgvector
+fastapi
+uvicorn
+pydantic
