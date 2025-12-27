@@ -2,6 +2,7 @@
 # /docs for API documentation
 
 import os
+import io
 import random
 import numpy as np
 import torch
@@ -9,7 +10,8 @@ from dotenv import load_dotenv
 from huggingface_hub import login
 from PIL import Image
 import logging
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
@@ -100,6 +102,7 @@ async def lifespan(app: FastAPI):
         yield
     except Exception as e:
         logger.error(f"An error occured while starting the API: {e}")
+        raise
 
 
 app = FastAPI(lifespan=lifespan)
@@ -119,9 +122,21 @@ def root():
     return {"Name": "Sketch2Graphviz FastAPI"}
 
 
-@app.get("/graphviz_code", response_model=str)
-def get_graphviz_code(image: Image.Image) -> str:
+@app.post("/graphviz_code", response_model=PlainTextResponse)
+async def get_graphviz_code(file: UploadFile = File(...)) -> PlainTextResponse:
     try:
+        if not hasattr(app.state, "model"):
+            logger.error("The Sketch2Graphviz VLM model is not loaded")
+            raise HTTPException(503, "The Sketch2Graphviz VLM model is not loaded")
+
+        content = await file.read()
+
+        # Open as PIL image
+        image = Image.open(io.BytesIO(content)).convert("RGB")
+
+        if image.size != (768, 768):
+            image = image.resize((768, 768), resample=Image.NEAREST)
+
         predicted_graphviz_output = predict_graphviz_dot(
             model=app.state.model,
             image=image,

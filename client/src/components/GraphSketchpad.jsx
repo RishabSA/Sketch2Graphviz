@@ -1,15 +1,16 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-	ArrowUpRight,
-	Circle,
-	Code,
-	Download,
-	Edit3,
-	MousePointer,
-	Square,
-	Trash2,
-	Upload,
-} from "react-feather";
+	FaCode,
+	FaEraser,
+	FaFileUpload,
+	FaMousePointer,
+	FaPenNib,
+	FaRegCircle,
+	FaRegSquare,
+	FaSave,
+	FaTrash,
+} from "react-icons/fa";
+import { ImArrowUpRight2 } from "react-icons/im";
 import {
 	Arrow as KonvaArrow,
 	Circle as KonvaCircle,
@@ -35,35 +36,35 @@ const PaintOptions = [
 	{
 		id: DrawAction.Select,
 		label: "Select",
-		icon: <MousePointer size={16} />,
+		icon: <FaMousePointer size={16} />,
 	},
 	{
 		id: DrawAction.Rectangle,
 		label: "Rectangle",
-		icon: <Square size={16} />,
+		icon: <FaRegSquare size={16} />,
 	},
 	{
 		id: DrawAction.Circle,
 		label: "Circle",
-		icon: <Circle size={16} />,
+		icon: <FaRegCircle size={16} />,
 	},
 	{
 		id: DrawAction.Arrow,
 		label: "Arrow",
-		icon: <ArrowUpRight size={16} />,
+		icon: <ImArrowUpRight2 size={16} />,
 	},
 	{
 		id: DrawAction.Pen,
 		label: "Pen",
-		icon: <Edit3 size={16} />,
+		icon: <FaPenNib size={16} />,
 	},
-	{ id: DrawAction.Eraser, label: "Eraser", icon: <Trash2 size={16} /> },
+	{ id: DrawAction.Eraser, label: "Eraser", icon: <FaEraser size={16} /> },
 ];
 
 const downloadURI = (uri, name) => {
 	const link = document.createElement("a");
 	link.download = name;
-	link.href = uri || "";
+	link.href = uri;
 	document.body.appendChild(link);
 	link.click();
 	document.body.removeChild(link);
@@ -73,6 +74,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 	const [color, setColor] = useState("#000000");
 	const [drawAction, setDrawAction] = useState(DrawAction.Pen);
 	const [canvasSize, setCanvasSize] = useState(768);
+	const [selected, setSelected] = useState(null);
 
 	const [strokeWidth, setStrokeWidth] = useState(4);
 
@@ -82,13 +84,52 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 	const [circles, setCircles] = useState([]);
 	const [arrows, setArrows] = useState([]);
 	const [image, setImage] = useState(undefined);
+	const [stageSize, setStageSize] = useState(768);
 
+	const wrapperRef = useRef(null);
 	const fileRef = useRef(null);
 	const stageRef = useRef(null);
 	const transformerRef = useRef(null);
 
+	useEffect(() => {
+		const el = wrapperRef.current;
+		if (!el) return;
+
+		const ro = new ResizeObserver(() => {
+			const rect = el.getBoundingClientRect();
+			setStageSize(Math.round(rect.width));
+		});
+
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, []);
+
+	const exportSketchBlob = async () => {
+		if (!stageRef.current) return null;
+
+		const exportSize = 768;
+		const pixelRatio = exportSize / stageSize;
+
+		const dataUrl = stageRef.current.toDataURL({
+			pixelRatio,
+			mimeType: "image/png",
+		});
+
+		const res = await fetch(dataUrl);
+		return await res.blob();
+	};
+
+	const clearSelection = useCallback(() => {
+		setSelected(null);
+
+		if (transformerRef.current) {
+			transformerRef.current.nodes([]);
+			transformerRef.current.getLayer().batchDraw();
+		}
+	}, []);
+
 	const onImportImageSelect = useCallback(e => {
-		const file = e.target.files?.[0];
+		const file = e.target.files[0];
 		if (file) {
 			const imageUrl = URL.createObjectURL(file);
 			const img = new window.Image();
@@ -105,26 +146,20 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 		fileRef.current.click();
 	}, []);
 
-	const onDownloadSketchClick = useCallback(() => {
-		if (!stageRef.current) return;
-
-		// Export target size (fixed)
+	const onDownloadSketchClick = () => {
 		const exportSize = 768;
-		// displayed canvas size (fallback if canvasSize is falsy)
-		const displayedSize =
-			canvasSize ||
-			Math.max(stageRef.current.width(), stageRef.current.height()) ||
-			exportSize;
 
-		// pixelRatio scales the current canvas to the target export size
-		const pixelRatio = displayedSize > 0 ? exportSize / displayedSize : 1;
+		const currentStageSize = stageRef.current.width();
+
+		const pixelRatio = exportSize / currentStageSize;
 
 		const dataUri = stageRef.current.toDataURL({
 			pixelRatio,
 			mimeType: "image/png",
 		});
+
 		downloadURI(dataUri, "sketch.png");
-	}, [canvasSize]);
+	};
 
 	const onClear = useCallback(() => {
 		setRectangles([]);
@@ -148,9 +183,9 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 	const isPaintRef = useRef(false);
 	const currentShapeRef = useRef(undefined);
 
-	const onStageMouseUp = useCallback(() => {
+	const onStageMouseUp = () => {
 		isPaintRef.current = false;
-	}, []);
+	};
 
 	const onStageMouseDown = useCallback(() => {
 		if (drawAction === DrawAction.Select) return;
@@ -234,38 +269,30 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 	}, [drawAction]);
 
 	const onShapeClick = useCallback(
-		e => {
+		(e, type) => {
 			if (drawAction !== DrawAction.Select) return;
-			const currentTarget = e.currentTarget;
+
+			const node = e.currentTarget;
+			const id = node.id();
+
+			setSelected({ type, id });
 
 			if (!transformerRef.current) return;
-			transformerRef.current.nodes([currentTarget]);
-			if (transformerRef.current.getLayer)
-				transformerRef.current.getLayer().batchDraw();
+			transformerRef.current.nodes([node]);
+			transformerRef.current.getLayer()?.batchDraw();
 		},
 		[drawAction]
 	);
 
-	const onBgClick = useCallback(() => {
-		if (!transformerRef.current) return;
-		try {
-			transformerRef.current.nodes([]);
-			if (transformerRef.current.getLayer)
-				transformerRef.current.getLayer().batchDraw();
-		} catch {
-			// ignore
-		}
-	}, []);
-
 	const isDraggable = drawAction === DrawAction.Select;
 
-	// compute image display sizing to preserve aspect ratio and center inside canvas
 	let imageRenderProps = null;
 	if (image) {
-		const imgW = image.naturalWidth || image.width || 1;
-		const imgH = image.naturalHeight || image.height || 1;
-		const canvasW = canvasSize;
-		const canvasH = canvasSize;
+		const imgW = image.naturalWidth;
+		const imgH = image.naturalHeight;
+
+		const canvasW = stageSize;
+		const canvasH = stageSize;
 
 		const scale = Math.min(canvasW / imgW, canvasH / imgH);
 		const displayW = Math.round(imgW * scale);
@@ -281,31 +308,64 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 		};
 	}
 
+	const deleteSelected = useCallback(() => {
+		if (!selected) return;
+
+		if (selected.type === "pen") {
+			setPens(prev => prev.filter(p => p.id !== selected.id));
+		} else if (selected.type === "rect") {
+			setRectangles(prev => prev.filter(r => r.id !== selected.id));
+		} else if (selected.type === "circle") {
+			setCircles(prev => prev.filter(c => c.id !== selected.id));
+		} else if (selected.type === "arrow") {
+			setArrows(prev => prev.filter(a => a.id !== selected.id));
+		} else if (selected.type === "image") {
+			setImage(undefined);
+		}
+
+		clearSelection();
+	}, [selected, clearSelection]);
+
+	useEffect(() => {
+		const onKeyDown = e => {
+			if ((e.key === "Delete" || e.key === "Backspace") && selected) {
+				e.preventDefault();
+				deleteSelected();
+			}
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [selected, deleteSelected]);
+
 	return (
 		<div className="w-full md:w-1/3 flex flex-col min-h-0">
-			<h2 className="mb-4 text-xl font-semibold">Sketch your Graph</h2>
+			<h2 className="mb-4 text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+				Sketch your Graph
+			</h2>
 			<div
-				className={`w-full overflow-hidden rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:cursor-crosshair ${
-					drawAction === DrawAction.Eraser ? "cursor-cell" : "cursor-crosshair"
+				className={`relative w-full overflow-hidden rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:cursor-crosshair ${
+					drawAction === DrawAction.Eraser
+						? "cursor-not-allowed"
+						: "cursor-crosshair"
 				}`}
-				style={{ aspectRatio: "1 / 1" }}>
+				style={{ aspectRatio: "1 / 1" }}
+				ref={wrapperRef}>
 				<Stage
-					width={canvasSize}
-					height={canvasSize}
+					width={stageSize}
+					height={stageSize}
 					ref={stageRef}
 					onMouseUp={onStageMouseUp}
 					onMouseDown={onStageMouseDown}
-					onMouseMove={onStageMouseMove}
-					style={{ margin: "0 auto", display: "block" }}>
+					onMouseMove={onStageMouseMove}>
 					<Layer>
 						<KonvaRect
 							x={0}
 							y={0}
-							height={canvasSize}
-							width={canvasSize}
+							width={stageSize}
+							height={stageSize}
 							fill="white"
 							id="bg"
-							onClick={onBgClick}
+							onClick={clearSelection}
 						/>
 
 						{image && (
@@ -316,7 +376,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 								width={imageRenderProps.width}
 								height={imageRenderProps.height}
 								draggable={isDraggable}
-								onClick={onShapeClick}
+								onClick={e => onShapeClick(e, "image")}
 							/>
 						)}
 
@@ -328,7 +388,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 								fill={arrow.color}
 								stroke={arrow.color}
 								strokeWidth={arrow.width}
-								onClick={onShapeClick}
+								onClick={e => onShapeClick(e, "arrow")}
 								draggable={isDraggable}
 							/>
 						))}
@@ -343,7 +403,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 								stroke={rectangle.color}
 								id={rectangle.id}
 								strokeWidth={rectangle.strokeWidth}
-								onClick={onShapeClick}
+								onClick={e => onShapeClick(e, "rect")}
 								draggable={isDraggable}
 							/>
 						))}
@@ -357,7 +417,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 								radius={circle.radius}
 								stroke={circle.color}
 								strokeWidth={circle.width}
-								onClick={onShapeClick}
+								onClick={e => onShapeClick(e, "circle")}
 								draggable={isDraggable}
 							/>
 						))}
@@ -371,7 +431,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 								stroke={pen.color}
 								strokeWidth={pen.width}
 								points={pen.points}
-								onClick={onShapeClick}
+								onClick={e => onShapeClick(e, "pen")}
 								draggable={isDraggable}
 							/>
 						))}
@@ -392,11 +452,19 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 						<Transformer ref={transformerRef} />
 					</Layer>
 				</Stage>
+				{drawAction === DrawAction.Select && selected && (
+					<div className="absolute left-3 bottom-3 z-20 pointer-events-none">
+						<div className="rounded-md border border-neutral-200 dark:border-neutral-700 bg-white/90 dark:bg-neutral-900/90 backdrop-blur px-3 py-2 text-xs text-neutral-700 dark:text-neutral-200 shadow-sm">
+							Tip: Press <span className="font-semibold">Delete</span> to delete
+							the selection
+						</div>
+					</div>
+				)}
 			</div>
 			<div className="mt-4 w-full flex flex-col items-center gap-3">
-				<div className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+				<div className="w-full flex flex-row gap-2 items-center justify-center">
 					<div className="flex items-center justify-center">
-						<div className="flex items-center overflow-hidden rounded-2xl border-2 border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+						<div className="grid grid-cols-4 items-center overflow-hidden rounded-2xl border-2 border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
 							{PaintOptions.map(({ id, label, icon }) => {
 								const active = id === drawAction;
 								return (
@@ -415,9 +483,9 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 								);
 							})}
 
-							<div className="flex items-center gap-2 px-3 py-2 border-l-2 border-neutral-200 dark:border-neutral-800">
+							<div className="flex items-center gap-2 px-3 py-2">
 								<label
-									className="h-8 w-8 rounded-lg cursor-pointer overflow-hidden transition-all duration-300"
+									className="h-8 w-8 rounded-lg cursor-pointer overflow-hidden transition-all duration-300 hover:scale-110"
 									style={{ backgroundColor: color }}
 									title="Stroke Color">
 									<input
@@ -434,13 +502,13 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 								type="button"
 								onClick={onClear}
 								title="Clear"
-								className="flex items-center justify-center px-4 py-4 text-md font-semibold transition-all duration-300 cursor-pointer bg-white text-neutral-900 hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 border-l-2 border-neutral-200 dark:border-neutral-800">
-								<Trash2 size={16} />
+								className="flex items-center justify-center px-4 py-4 text-md font-semibold transition-all duration-300 cursor-pointer bg-white text-neutral-900 hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800">
+								<FaTrash size={16} />
 							</button>
 						</div>
 					</div>
 
-					<div className="flex items-center justify-center gap-2">
+					<div className="flex flex-col items-center justify-center">
 						<input
 							type="file"
 							ref={fileRef}
@@ -451,49 +519,56 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 
 						<button
 							type="button"
+							title="Import Image"
 							onClick={onImportImageClick}
-							className="cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-4 text-sm font-bold text-neutral-900 transition-all hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-800">
-							<Upload size={16} />
+							className="cursor-pointer flex items-center justify-center gap-2 rounded-t-xl bg-white px-4 py-4 text-sm font-bold text-neutral-900 transition-all hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-800">
+							<FaFileUpload size={16} />
 						</button>
 
 						<button
 							type="button"
+							title="Download Sketch"
 							onClick={onDownloadSketchClick}
-							className="cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-4 text-sm font-bold text-neutral-900 transition-all hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-800">
-							<Download size={16} />
+							className="cursor-pointer flex items-center justify-center gap-2 rounded-b-xl bg-white px-4 py-4 text-sm font-bold text-neutral-900 transition-all hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 border-x-2 border-b-2 border-neutral-200 dark:border-neutral-800">
+							<FaSave size={16} />
 						</button>
 					</div>
+					<div className="rounded-xl border-2 border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 px-4 py-3">
+						<div className="flex items-center justify-between">
+							<p className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+								{drawAction === "eraser" ? "Eraser Size" : "Stroke Size"}
+							</p>
+							<p className="text-sm text-neutral-600 dark:text-neutral-300">
+								{strokeWidth}px
+							</p>
+						</div>
+
+						<input
+							type="range"
+							min={1}
+							max={40}
+							value={strokeWidth}
+							onChange={e => setStrokeWidth(Number(e.target.value))}
+							className="mt-2 w-full accent-blue-600"
+						/>
+
+						<div className="mt-1 flex justify-between text-xs text-neutral-500 dark:text-neutral-400">
+							<span>Thin</span>
+							<span>Thick</span>
+						</div>
+					</div>
 				</div>
 
-				<div className="w-full max-w-md rounded-xl border-2 border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 px-4 py-3">
-					<div className="flex items-center justify-between">
-						<p className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
-							{drawAction === "eraser" ? "Eraser Size" : "Stroke Size"}
-						</p>
-						<p className="text-sm text-neutral-600 dark:text-neutral-300">
-							{strokeWidth}px
-						</p>
-					</div>
-
-					<input
-						type="range"
-						min={1}
-						max={40}
-						value={strokeWidth}
-						onChange={e => setStrokeWidth(Number(e.target.value))}
-						className="mt-2 w-full accent-blue-600"
-					/>
-
-					<div className="mt-1 flex justify-between text-xs text-neutral-500 dark:text-neutral-400">
-						<span>Thin</span>
-						<span>Thick</span>
-					</div>
-				</div>
 				<button
 					type="button"
-					onClick={convertToGraphviz}
+					onClick={async () => {
+						const blob = await exportSketchBlob();
+						if (!blob) return;
+
+						convertToGraphviz(blob);
+					}}
 					className="w-full max-w-md cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700">
-					<Code size={16} />
+					<FaCode size={16} />
 					Convert to Graphviz
 				</button>
 			</div>

@@ -1,21 +1,22 @@
 import * as Viz from "@viz-js/viz";
 import React, { useEffect, useRef, useState } from "react";
 import {
-	ArrowRight,
-	Check,
-	Copy,
-	Download,
-	GitHub,
-	Globe,
-	Info,
-	Linkedin,
-	Monitor,
-	Moon,
-	Sun,
-	X,
-} from "react-feather";
+	FaArrowRight,
+	FaCheck,
+	FaCopy,
+	FaDesktop,
+	FaDownload,
+	FaGithub,
+	FaGlobe,
+	FaInfo,
+	FaLinkedin,
+	FaMoon,
+	FaSun,
+} from "react-icons/fa";
+import { MdOutlineClose } from "react-icons/md";
 import { Bounce, ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { fetchGraphvizCode } from "./api/server";
 import { GraphSketchpad } from "./components/GraphSketchpad";
 
 function App() {
@@ -122,8 +123,23 @@ function App() {
 		}
 	};
 
+	const convertToGraphviz = async pngBlob => {
+		try {
+			setLoading(true);
+
+			const dot = await fetchGraphvizCode(pngBlob);
+			setGraphvizCode(dot);
+		} catch (e) {
+			toast.error(
+				`An unexpected error occurred while attempting to convert the sketch: ${e}.`
+			);
+		} finally {
+			setLoading(false);
+		}
+	};
+
 	return (
-		<div className="mb-8">
+		<div className="mb-24">
 			{loading && (
 				<div
 					className="fixed inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-xs"
@@ -164,9 +180,8 @@ function App() {
 					}`}>
 					<div className="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-neutral-600 border-neutral-200">
 						<h3 className="flex items-center text-xl font-semibold text-neutral-900 dark:text-neutral-300">
-							<Info
+							<FaInfo
 								size={24}
-								strokeWidth={2}
 								className="stroke-current text-neutral-500 dark:text-neutral-300 mr-4"
 							/>
 							Info
@@ -175,9 +190,8 @@ function App() {
 							aria-label="Close"
 							className="cursor-pointer text-neutral-400 bg-transparent hover:bg-neutral-200 hover:text-neutral-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-neutral-600 dark:hover:text-white"
 							onClick={() => setIsInfoModalOpen(false)}>
-							<X
+							<MdOutlineClose
 								size={24}
-								strokeWidth={2}
 								className="stroke-current text-neutral-500 dark:text-neutral-400"
 							/>
 						</button>
@@ -206,15 +220,14 @@ function App() {
 									}
 									className="transition-all inline-flex items-center justify-between w-full px-4 py-2 text-neutral-900 bg-white border border-neutral-200 rounded-lg cursor-pointer dark:hover:text-neutral-300 dark:border-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 dark:text-white dark:bg-neutral-800 dark:hover:bg-neutral-700">
 									<div className="flex items-center space-x-4">
-										<Linkedin
+										<FaLinkedin
 											size={24}
 											className="stroke-current text-blue-700 dark:text-blue-500"
 										/>
 										<div className="w-full text-lg font-semibold">LinkedIn</div>
 									</div>
-									<ArrowRight
+									<FaArrowRight
 										size={20}
-										strokeWidth={3}
 										className="stroke-current text-neutral-500 dark:text-neutral-400"
 									/>
 								</label>
@@ -226,7 +239,7 @@ function App() {
 									}
 									className="transition-all inline-flex items-center justify-between w-full px-4 py-2 text-neutral-900 bg-white border border-neutral-200 rounded-lg cursor-pointer dark:hover:text-neutral-300 dark:border-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 dark:text-white dark:bg-neutral-800 dark:hover:bg-neutral-700">
 									<div className="flex items-center space-x-4">
-										<Globe
+										<FaGlobe
 											size={24}
 											className="stroke-current text-green-500 dark:text-green-400"
 										/>
@@ -234,9 +247,8 @@ function App() {
 											Personal Website
 										</div>
 									</div>
-									<ArrowRight
+									<FaArrowRight
 										size={20}
-										strokeWidth={3}
 										className="stroke-current text-neutral-500 dark:text-neutral-400"
 									/>
 								</label>
@@ -248,16 +260,15 @@ function App() {
 									}
 									className="transition-all inline-flex items-center justify-between w-full px-4 py-2 text-neutral-900 bg-white border border-neutral-200 rounded-lg cursor-pointer dark:hover:text-neutral-300 dark:border-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 dark:text-white dark:bg-neutral-800 dark:hover:bg-neutral-700">
 									<div className="flex items-center space-x-4">
-										<GitHub
+										<FaGithub
 											size={24}
 											className="stroke-current text-neutral-800 dark:text-neutral-300"
 										/>
 
 										<div className="w-full text-lg font-semibold">Github</div>
 									</div>
-									<ArrowRight
+									<FaArrowRight
 										size={20}
-										strokeWidth={3}
 										className="stroke-current text-neutral-500 dark:text-neutral-400"
 									/>
 								</label>
@@ -282,7 +293,7 @@ function App() {
 					transition={Bounce}
 				/>
 
-				<div className="my-4 md:flex md:space-x-20 items-center justify-center">
+				<div className="mt-4 mb-8 md:flex md:space-x-20 items-center justify-center">
 					<div className="flex items-center space-x-4 justify-center">
 						<img
 							src="/assets/vite.svg"
@@ -299,9 +310,9 @@ function App() {
 							<button
 								onClick={() => setThemeDropdownOpen(o => !o)}
 								className="cursor-pointer text-neutral-700 dark:text-neutral-300 bg-white dark:bg-neutral-900 border-2 border-neutral-200 dark:border-neutral-600 hover:bg-neutral-200 dark:hover:bg-neutral-800 font-medium rounded-lg text-sm px-5 py-2.5 inline-flex items-center">
-								{theme === "Light" && <Sun size={16} className="mr-2" />}
-								{theme === "Dark" && <Moon size={16} className="mr-2" />}
-								{theme === "System" && <Monitor size={16} className="mr-2" />}
+								{theme === "Light" && <FaSun size={16} className="mr-2" />}
+								{theme === "Dark" && <FaMoon size={16} className="mr-2" />}
+								{theme === "System" && <FaDesktop size={16} className="mr-2" />}
 								<span>{theme}</span>
 							</button>
 							{themeDropdownOpen && (
@@ -314,7 +325,7 @@ function App() {
 													setThemeDropdownOpen(false);
 												}}
 												className="cursor-pointer w-full px-4 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center">
-												<Sun size={16} className="mr-2" />
+												<FaSun size={16} className="mr-2" />
 												Light
 											</button>
 										</li>
@@ -325,7 +336,7 @@ function App() {
 													setThemeDropdownOpen(false);
 												}}
 												className="cursor-pointer w-full px-4 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center">
-												<Moon size={16} className="mr-2" />
+												<FaMoon size={16} className="mr-2" />
 												Dark
 											</button>
 										</li>
@@ -336,7 +347,7 @@ function App() {
 													setThemeDropdownOpen(false);
 												}}
 												className="cursor-pointer w-full px-4 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center">
-												<Monitor size={16} className="mr-2" />
+												<FaDesktop size={16} className="mr-2" />
 												System
 											</button>
 										</li>
@@ -350,9 +361,8 @@ function App() {
 							className="cursor-pointer h-10 w-10 text-neutral-500 dark:text-neutral-300 bg-white dark:bg-neutral-900 border-2 border-neutral-200 dark:border-neutral-600 hover:bg-neutral-200 dark:hover:bg-neutral-800 flex items-center justify-center rounded-lg transition-colors"
 							onClick={() => setIsInfoModalOpen(true)}>
 							<div className="flex items-center">
-								<Info
-									size={24}
-									strokeWidth={2}
+								<FaInfo
+									size={16}
 									className="stroke-current text-neutral-500 dark:text-neutral-300"
 								/>
 							</div>
@@ -361,9 +371,11 @@ function App() {
 				</div>
 
 				<div className="w-full h-full flex flex-col md:flex-row gap-4 bg-neutral-100 dark:bg-neutral-900 rounded-xl text-neutral-900 dark:text-neutral-300">
-					<GraphSketchpad />
+					<GraphSketchpad convertToGraphviz={convertToGraphviz} />
 					<div className="w-full md:w-1/3 flex flex-col min-h-0 mt-6 md:mt-0 gap-4">
-						<h2 className="text-xl font-semibold">Generated Graphviz Code</h2>
+						<h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+							Generated Graphviz Code
+						</h2>
 
 						<div
 							className="relative w-full overflow-hidden rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900"
@@ -388,13 +400,15 @@ function App() {
 							onClick={handleCopyGraphvizCode}
 							disabled={!graphvizCode}
 							className="w-fit cursor-pointer flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700 disabled:bg-neutral-300 disabled:dark:bg-neutral-800 disabled:dark:text-neutral-500 disabled:hover:cursor-not-allowed">
-							{copied ? <Check size={16} /> : <Copy size={16} />}
+							{copied ? <FaCheck size={16} /> : <FaCopy size={16} />}
 							{copied ? "Copied!" : "Copy Graphviz Code"}
 						</button>
 					</div>
 
 					<div className="w-full md:w-1/3 flex flex-col min-h-0 mt-6 md:mt-0 gap-4">
-						<h2 className="text-xl font-semibold">Graphviz Preview</h2>
+						<h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+							Graphviz Preview
+						</h2>
 
 						<div
 							className="w-full overflow-auto rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3"
@@ -409,7 +423,7 @@ function App() {
 							type="button"
 							disabled={!validGraphvizImage}
 							className="w-fit cursor-pointer flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700 disabled:bg-neutral-300 disabled:dark:bg-neutral-800 disabled:dark:text-neutral-500 disabled:hover:cursor-not-allowed">
-							<Download size={16} />
+							<FaDownload size={16} />
 							Download Graphviz Graph
 						</button>
 					</div>
