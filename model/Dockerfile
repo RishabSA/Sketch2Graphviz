@@ -17,6 +17,7 @@ RUN pip install --upgrade pip setuptools wheel && pip install -r requirements.tx
 
 COPY . /app
 
+# FastAPI
 ENV HOST=0.0.0.0 PORT=8000
 
 EXPOSE 8000
