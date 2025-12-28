@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
         login(token=hf_token)
 
         model = load_sketch2graphviz_vlm_local(
-            model_load_dir="checkpoints",
+            model_load_dir="vlm_model",
             epoch_load=2,
             quantization=quantization,
             device=device,
@@ -122,8 +122,8 @@ def root():
     return {"Name": "Sketch2Graphviz FastAPI"}
 
 
-@app.post("/graphviz_code", response_model=PlainTextResponse)
-async def get_graphviz_code(file: UploadFile = File(...)) -> PlainTextResponse:
+@app.post("/graphviz_code", response_class=PlainTextResponse)
+async def get_graphviz_code(file: UploadFile = File(...)) -> str:
     try:
         if not hasattr(app.state, "model"):
             logger.error("The Sketch2Graphviz VLM model is not loaded")

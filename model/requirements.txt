@@ -20,3 +20,4 @@ pgvector
 fastapi
 uvicorn
 pydantic
+python-multipart

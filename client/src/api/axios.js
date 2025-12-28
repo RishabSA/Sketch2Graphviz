@@ -1,7 +1,6 @@
 import axios from "axios";
 
-// const server_url = "http://localhost:8000";
-const server_url = "runpod";
+const server_url = import.meta.env.VITE_SERVER_URL;
 
 const api = axios.create({
 	baseURL: server_url,

@@ -7,11 +7,15 @@ from pgvector.psycopg2 import register_vector
 def store_embeddings_in_db(
     embedding_data: list[tuple[str, np.ndarray]],
     dbname: str = "sketch2graphvizdb",
+    user: str | None = "root",
     table_name: str = "graphviz_embeddings",
     embedding_dim: int = 4096,
 ) -> bool:
     try:
-        conn = psycopg2.connect(f"dbname={dbname}")
+        conn = psycopg2.connect(
+            f"dbname={dbname} user={user}" if user is not None else f"dbname={dbname}"
+        )
+
         register_vector(conn)
         cur = conn.cursor()
 
@@ -60,10 +64,13 @@ def get_top_k_similar_vectors_from_db(
     embedding_vector: np.ndarray,
     top_K: int = 5,
     dbname: str = "sketch2graphvizdb",
+    user: str | None = "root",
     table_name: str = "graphviz_embeddings",
 ) -> list[tuple[int, str, float]]:
     try:
-        conn = psycopg2.connect(f"dbname={dbname}")
+        conn = psycopg2.connect(
+            f"dbname={dbname} user={user}" if user is not None else f"dbname={dbname}"
+        )
         register_vector(conn)
         cur = conn.cursor()
 

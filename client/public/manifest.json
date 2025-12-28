@@ -1,0 +1,35 @@
+{
+	"manifest_version": 3,
+	"name": "Sketch2Graphviz — Turn sketches into professional graphs",
+	"short_name": "Sketch2Graphviz",
+	"description": "Sketch2Graphviz allows you to convert sketches or images of graphs and flowcharts to proper Graphviz code using a LoRA fine-tuned Llama 3.2 11B Vision and RAG, making a previously tedious, manual task fast and effortless.",
+	"lang": "en-US",
+	"start_url": "/",
+	"scope": "/",
+	"categories": [
+		"AI",
+		"Graphviz",
+		"RAG",
+		"LoRA",
+		"Vision-Language Model",
+		"Llama",
+		"Llama 3.2 Vision",
+		"Rishab Alagharu",
+		"Rishab",
+		"Alagharu"
+	],
+	"icons": [
+		{
+			"src": "/assets/Sketch2GraphvizIcon192.png",
+			"sizes": "192x192",
+			"type": "image/png"
+		},
+		{
+			"src": "/assets/Sketch2GraphvizIcon512.png",
+			"sizes": "512x512",
+			"type": "image/png"
+		}
+	],
+	"prefer_related_applications": false,
+	"related_applications": []
+}

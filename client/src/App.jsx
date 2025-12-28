@@ -198,12 +198,11 @@ function App() {
 					</div>
 					<div className="p-4 md:p-5 space-y-4">
 						<p className="text-base leading-relaxed text-neutral-500 dark:text-neutral-400">
-							Sketch2Graphviz is an AI-powered tool that converts an image of a
-							graph into working graphviz code, speeding up system design
-							processes, architecture design, and making your work a lot easier!
-							The model uses a LoRA fine-tuned Llama 3.2 Vision 11B Instruct
-							model and Retrieval-Augmented Generation (RAG) with a vector
-							database built with PostgreSQL and PGVector.
+							Sketch2Graphviz allows you to convert sketches or images of graphs
+							and flowcharts to proper Graphviz code using a LoRA fine-tuned
+							Llama 3.2 11B Vision and Retrieval-Augmented Generation (RAG)
+							through a vector database built with PostgreSQL and PGVector,
+							making a previously tedious, manual task fast and effortless.
 						</p>
 						<p className="text-base leading-relaxed text-neutral-500 dark:text-neutral-400">
 							See my personal links below to learn more about me and my work or
@@ -296,9 +295,9 @@ function App() {
 				<div className="mt-4 mb-8 md:flex md:space-x-20 items-center justify-center">
 					<div className="flex items-center space-x-4 justify-center">
 						<img
-							src="/assets/vite.svg"
+							src="/assets/icon.svg"
 							alt="Sketch2Graphviz Icon"
-							className="h-10 w-auto"
+							className="h-12 w-auto"
 						/>
 						<h1 className="text-3xl font-semibold text-neutral-800 dark:text-neutral-200">
 							Sketch2Graphviz

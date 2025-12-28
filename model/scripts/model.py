@@ -202,6 +202,8 @@ class Sketch2GraphvizVLM(nn.Module):
             return_tensors="pt",
         ).to(self.device)
 
+        prompt_lengths = inputs["attention_mask"].sum(dim=1)  # shape: (batch_size)
+
         eot_id = self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
 
         with torch.inference_mode():
@@ -214,8 +216,13 @@ class Sketch2GraphvizVLM(nn.Module):
                 eos_token_id=[self.tokenizer.eos_token_id, eot_id],
             )
 
+            response_only = []
+            for i in range(out.size(0)):
+                prompt_len = int(prompt_lengths[i].item())
+                response_only.append(out[i, prompt_len:].tolist())
+
             sequences = self.processor.batch_decode(
-                out,
+                response_only,
                 skip_special_tokens=skip_special_tokens,
                 clean_up_tokenization_spaces=False,
             )
@@ -253,7 +260,7 @@ def save_sketch2graphviz_vlm_local(
 
 def load_sketch2graphviz_vlm_local(
     model_load_dir: str = "checkpoints",
-    epoch_load: int | None = None,
+    epoch_load: int = None,
     quantization: str = "16-bit",
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> Sketch2GraphvizVLM:

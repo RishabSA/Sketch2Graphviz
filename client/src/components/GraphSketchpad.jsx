@@ -73,7 +73,6 @@ const downloadURI = (uri, name) => {
 export const GraphSketchpad = ({ convertToGraphviz }) => {
 	const [color, setColor] = useState("#000000");
 	const [drawAction, setDrawAction] = useState(DrawAction.Pen);
-	const [canvasSize, setCanvasSize] = useState(768);
 	const [selected, setSelected] = useState(null);
 
 	const [strokeWidth, setStrokeWidth] = useState(4);
@@ -563,8 +562,6 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 					type="button"
 					onClick={async () => {
 						const blob = await exportSketchBlob();
-						if (!blob) return;
-
 						convertToGraphviz(blob);
 					}}
 					className="w-full max-w-md cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700">

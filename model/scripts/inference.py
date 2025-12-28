@@ -60,6 +60,7 @@ def predict_graphviz_dot(
             embedding_vector=embedding_query_vector,
             top_K=top_K_rag,
             dbname="sketch2graphvizdb",
+            user="root",
             table_name="graphviz_embeddings",
         )
 
