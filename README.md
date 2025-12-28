@@ -75,7 +75,7 @@ The Sketch2Graphviz web application allows you to sketch a graph or flowchart wi
 
 The Sketch2Graphviz Vision-Language model (VLM) uses the 11 billino parameter `meta-llama/Llama-3.2-11B-Vision-Instruct` as a base model. The base model was fine-tuned with LoRA adapters on the linear layers in both the image encoder and text decoder. The base model was loaded with **16-bit quantization** for LoRA fine-tuning and **4-bit quantization** for inferencing and deployment on the FastAPI server to conserve memory and compute capabilities.
 
-The model was fine-tuned with an A100 SXM GPU with 80 GB VRAM on Google Colab.
+The model was fine-tuned with an A100 SXM GPU with 80 GB VRAM on Google Colab from a Jupyter notebook.
 
 ### Retrieval-Augmented Generation (RAG) and Vector Database
 
