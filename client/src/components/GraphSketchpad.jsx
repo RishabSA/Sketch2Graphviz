@@ -61,22 +61,11 @@ const PaintOptions = [
 	{ id: DrawAction.Eraser, label: "Eraser", icon: <FaEraser size={16} /> },
 ];
 
-const downloadURI = (uri, name) => {
-	const link = document.createElement("a");
-	link.download = name;
-	link.href = uri;
-	document.body.appendChild(link);
-	link.click();
-	document.body.removeChild(link);
-};
-
 export const GraphSketchpad = ({ convertToGraphviz }) => {
 	const [color, setColor] = useState("#000000");
 	const [drawAction, setDrawAction] = useState(DrawAction.Pen);
 	const [selected, setSelected] = useState(null);
-
 	const [strokeWidth, setStrokeWidth] = useState(4);
-
 	const [pens, setPens] = useState([]);
 	const [erasers, setErasers] = useState([]);
 	const [rectangles, setRectangles] = useState([]);
@@ -84,24 +73,68 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 	const [arrows, setArrows] = useState([]);
 	const [image, setImage] = useState(undefined);
 	const [stageSize, setStageSize] = useState(768);
+	const [isDraggable, setIsDraggable] = useState(
+		drawAction === DrawAction.Select
+	);
+	const [imageRenderProps, setImageRenderProps] = useState(null);
 
 	const wrapperRef = useRef(null);
 	const fileRef = useRef(null);
 	const stageRef = useRef(null);
 	const transformerRef = useRef(null);
+	const isPaintRef = useRef(false);
+	const currentShapeRef = useRef(undefined);
 
 	useEffect(() => {
-		const el = wrapperRef.current;
-		if (!el) return;
+		setIsDraggable(drawAction === DrawAction.Select);
+	}, [drawAction]);
 
-		const ro = new ResizeObserver(() => {
-			const rect = el.getBoundingClientRect();
+	useEffect(() => {
+		if (image) {
+			const imgW = image.naturalWidth;
+			const imgH = image.naturalHeight;
+
+			const canvasW = stageSize;
+			const canvasH = stageSize;
+
+			const scale = Math.min(canvasW / imgW, canvasH / imgH);
+			const displayW = Math.round(imgW * scale);
+			const displayH = Math.round(imgH * scale);
+			const offsetX = Math.round((canvasW - displayW) / 2);
+			const offsetY = Math.round((canvasH - displayH) / 2);
+
+			setImageRenderProps({
+				x: offsetX,
+				y: offsetY,
+				width: displayW,
+				height: displayH,
+			});
+		}
+	}, [image, stageSize]);
+
+	useEffect(() => {
+		const element = wrapperRef.current;
+		if (!element) return;
+
+		const resizeObserver = new ResizeObserver(() => {
+			const rect = element.getBoundingClientRect();
 			setStageSize(Math.round(rect.width));
 		});
 
-		ro.observe(el);
-		return () => ro.disconnect();
+		resizeObserver.observe(element);
+		return () => resizeObserver.disconnect();
 	}, []);
+
+	const downloadURI = (uri, name) => {
+		const link = document.createElement("a");
+		link.download = name;
+		link.href = uri;
+
+		document.body.appendChild(link);
+		link.click();
+
+		document.body.removeChild(link);
+	};
 
 	const exportSketchBlob = async () => {
 		if (!stageRef.current) return null;
@@ -114,8 +147,8 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 			mimeType: "image/png",
 		});
 
-		const res = await fetch(dataUrl);
-		return await res.blob();
+		const result = await fetch(dataUrl);
+		return await result.blob();
 	};
 
 	const clearSelection = useCallback(() => {
@@ -129,6 +162,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 
 	const onImportImageSelect = useCallback(e => {
 		const file = e.target.files[0];
+
 		if (file) {
 			const imageUrl = URL.createObjectURL(file);
 			const img = new window.Image();
@@ -138,6 +172,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 			};
 			img.src = imageUrl;
 		}
+
 		e.target.value = "";
 	}, []);
 
@@ -169,18 +204,12 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 		setImage(undefined);
 
 		if (transformerRef.current) {
-			try {
-				transformerRef.current.nodes([]);
-				if (transformerRef.current.getLayer)
-					transformerRef.current.getLayer().batchDraw();
-			} catch {
-				// ignore if transformer is not ready
+			transformerRef.current.nodes([]);
+			if (transformerRef.current.getLayer) {
+				transformerRef.current.getLayer().batchDraw();
 			}
 		}
 	}, []);
-
-	const isPaintRef = useRef(false);
-	const currentShapeRef = useRef(undefined);
 
 	const onStageMouseUp = () => {
 		isPaintRef.current = false;
@@ -278,34 +307,10 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 
 			if (!transformerRef.current) return;
 			transformerRef.current.nodes([node]);
-			transformerRef.current.getLayer()?.batchDraw();
+			transformerRef.current.getLayer().batchDraw();
 		},
 		[drawAction]
 	);
-
-	const isDraggable = drawAction === DrawAction.Select;
-
-	let imageRenderProps = null;
-	if (image) {
-		const imgW = image.naturalWidth;
-		const imgH = image.naturalHeight;
-
-		const canvasW = stageSize;
-		const canvasH = stageSize;
-
-		const scale = Math.min(canvasW / imgW, canvasH / imgH);
-		const displayW = Math.round(imgW * scale);
-		const displayH = Math.round(imgH * scale);
-		const offsetX = Math.round((canvasW - displayW) / 2);
-		const offsetY = Math.round((canvasH - displayH) / 2);
-
-		imageRenderProps = {
-			x: offsetX,
-			y: offsetY,
-			width: displayW,
-			height: displayH,
-		};
-	}
 
 	const deleteSelected = useCallback(() => {
 		if (!selected) return;
@@ -332,136 +337,140 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 				deleteSelected();
 			}
 		};
+
 		window.addEventListener("keydown", onKeyDown);
+
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [selected, deleteSelected]);
 
 	return (
-		<div className="w-full md:w-1/3 flex flex-col min-h-0">
+		<div className="w-full md:flex-1 md:w-1/3 flex flex-col">
 			<h2 className="mb-4 text-xl font-semibold text-neutral-900 dark:text-neutral-100">
 				Sketch your Graph
 			</h2>
-			<div
-				className={`relative w-full overflow-hidden rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:cursor-crosshair ${
-					drawAction === DrawAction.Eraser
-						? "cursor-not-allowed"
-						: "cursor-crosshair"
-				}`}
-				style={{ aspectRatio: "1 / 1" }}
-				ref={wrapperRef}>
-				<Stage
-					width={stageSize}
-					height={stageSize}
-					ref={stageRef}
-					onMouseUp={onStageMouseUp}
-					onMouseDown={onStageMouseDown}
-					onMouseMove={onStageMouseMove}>
-					<Layer>
-						<KonvaRect
-							x={0}
-							y={0}
-							width={stageSize}
-							height={stageSize}
-							fill="white"
-							id="bg"
-							onClick={clearSelection}
-						/>
-
-						{image && (
-							<KonvaImage
-								image={image}
-								x={imageRenderProps.x}
-								y={imageRenderProps.y}
-								width={imageRenderProps.width}
-								height={imageRenderProps.height}
-								draggable={isDraggable}
-								onClick={e => onShapeClick(e, "image")}
-							/>
-						)}
-
-						{arrows.map(arrow => (
-							<KonvaArrow
-								key={arrow.id}
-								id={arrow.id}
-								points={arrow.points}
-								fill={arrow.color}
-								stroke={arrow.color}
-								strokeWidth={arrow.width}
-								onClick={e => onShapeClick(e, "arrow")}
-								draggable={isDraggable}
-							/>
-						))}
-
-						{rectangles.map(rectangle => (
+			<div className="w-full max-w-full mx-auto">
+				<div
+					className={`relative w-full overflow-hidden rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:cursor-crosshair ${
+						drawAction === DrawAction.Eraser
+							? "cursor-not-allowed"
+							: "cursor-crosshair"
+					}`}
+					style={{ aspectRatio: "1 / 1" }}
+					ref={wrapperRef}>
+					<Stage
+						width={stageSize}
+						height={stageSize}
+						ref={stageRef}
+						onMouseUp={onStageMouseUp}
+						onMouseDown={onStageMouseDown}
+						onMouseMove={onStageMouseMove}>
+						<Layer>
 							<KonvaRect
-								key={rectangle.id}
-								x={rectangle.x}
-								y={rectangle.y}
-								height={rectangle.height}
-								width={rectangle.width}
-								stroke={rectangle.color}
-								id={rectangle.id}
-								strokeWidth={rectangle.strokeWidth}
-								onClick={e => onShapeClick(e, "rect")}
-								draggable={isDraggable}
+								x={0}
+								y={0}
+								width={stageSize}
+								height={stageSize}
+								fill="white"
+								id="bg"
+								onClick={clearSelection}
 							/>
-						))}
 
-						{circles.map(circle => (
-							<KonvaCircle
-								key={circle.id}
-								id={circle.id}
-								x={circle.x}
-								y={circle.y}
-								radius={circle.radius}
-								stroke={circle.color}
-								strokeWidth={circle.width}
-								onClick={e => onShapeClick(e, "circle")}
-								draggable={isDraggable}
-							/>
-						))}
+							{image && imageRenderProps && (
+								<KonvaImage
+									image={image}
+									x={imageRenderProps.x}
+									y={imageRenderProps.y}
+									width={imageRenderProps.width}
+									height={imageRenderProps.height}
+									draggable={isDraggable}
+									onClick={e => onShapeClick(e, "image")}
+								/>
+							)}
 
-						{pens.map(pen => (
-							<KonvaLine
-								key={pen.id}
-								id={pen.id}
-								lineCap="round"
-								lineJoin="round"
-								stroke={pen.color}
-								strokeWidth={pen.width}
-								points={pen.points}
-								onClick={e => onShapeClick(e, "pen")}
-								draggable={isDraggable}
-							/>
-						))}
+							{arrows.map(arrow => (
+								<KonvaArrow
+									key={arrow.id}
+									id={arrow.id}
+									points={arrow.points}
+									fill={arrow.color}
+									stroke={arrow.color}
+									strokeWidth={arrow.width}
+									onClick={e => onShapeClick(e, "arrow")}
+									draggable={isDraggable}
+								/>
+							))}
 
-						{erasers.map(eraser => (
-							<KonvaLine
-								key={eraser.id}
-								points={eraser.points}
-								stroke="black"
-								strokeWidth={eraser.width}
-								lineCap="round"
-								lineJoin="round"
-								globalCompositeOperation="destination-out"
-								listening={false}
-							/>
-						))}
+							{rectangles.map(rectangle => (
+								<KonvaRect
+									key={rectangle.id}
+									x={rectangle.x}
+									y={rectangle.y}
+									height={rectangle.height}
+									width={rectangle.width}
+									stroke={rectangle.color}
+									id={rectangle.id}
+									strokeWidth={rectangle.strokeWidth}
+									onClick={e => onShapeClick(e, "rect")}
+									draggable={isDraggable}
+								/>
+							))}
 
-						<Transformer ref={transformerRef} />
-					</Layer>
-				</Stage>
-				{drawAction === DrawAction.Select && selected && (
-					<div className="absolute left-3 bottom-3 z-20 pointer-events-none">
-						<div className="rounded-md border border-neutral-200 dark:border-neutral-700 bg-white/90 dark:bg-neutral-900/90 backdrop-blur px-3 py-2 text-xs text-neutral-700 dark:text-neutral-200 shadow-sm">
-							Tip: Press <span className="font-semibold">Delete</span> to delete
-							the selection
+							{circles.map(circle => (
+								<KonvaCircle
+									key={circle.id}
+									id={circle.id}
+									x={circle.x}
+									y={circle.y}
+									radius={circle.radius}
+									stroke={circle.color}
+									strokeWidth={circle.width}
+									onClick={e => onShapeClick(e, "circle")}
+									draggable={isDraggable}
+								/>
+							))}
+
+							{pens.map(pen => (
+								<KonvaLine
+									key={pen.id}
+									id={pen.id}
+									lineCap="round"
+									lineJoin="round"
+									stroke={pen.color}
+									strokeWidth={pen.width}
+									points={pen.points}
+									onClick={e => onShapeClick(e, "pen")}
+									draggable={isDraggable}
+								/>
+							))}
+
+							{erasers.map(eraser => (
+								<KonvaLine
+									key={eraser.id}
+									points={eraser.points}
+									stroke="black"
+									strokeWidth={eraser.width}
+									lineCap="round"
+									lineJoin="round"
+									globalCompositeOperation="destination-out"
+									listening={false}
+								/>
+							))}
+
+							<Transformer ref={transformerRef} />
+						</Layer>
+					</Stage>
+					{drawAction === DrawAction.Select && selected && (
+						<div className="absolute left-3 bottom-3 z-20 pointer-events-none">
+							<div className="rounded-md border border-neutral-200 dark:border-neutral-700 bg-white/90 dark:bg-neutral-900/90 backdrop-blur px-3 py-2 text-xs text-neutral-700 dark:text-neutral-200 shadow-sm">
+								Tip: Press <span className="font-semibold">Delete</span> to
+								delete the selection
+							</div>
 						</div>
-					</div>
-				)}
+					)}
+				</div>
 			</div>
 			<div className="mt-4 w-full flex flex-col items-center gap-3">
-				<div className="w-full flex flex-row gap-2 items-center justify-center">
+				<div className="w-full flex flex-wrap gap-2 items-center justify-center">
 					<div className="flex items-center justify-center">
 						<div className="grid grid-cols-4 items-center overflow-hidden rounded-2xl border-2 border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
 							{PaintOptions.map(({ id, label, icon }) => {
@@ -532,7 +541,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 							<FaSave size={16} />
 						</button>
 					</div>
-					<div className="rounded-xl border-2 border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 px-4 py-3">
+					<div className="rounded-xl border-2 border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 px-4 py-3 w-full lg:w-fit">
 						<div className="flex items-center justify-between">
 							<p className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
 								{drawAction === "eraser" ? "Eraser Size" : "Stroke Size"}

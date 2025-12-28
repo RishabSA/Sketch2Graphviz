@@ -119,7 +119,12 @@ function App() {
 				copiedTimerRef.current = null;
 			}, 2000);
 		} catch (err) {
-			console.error("Failed to copy text: ", err);
+			toast.error(
+				`An unexpected error occurred while attempting to copy text: ${err}`
+			);
+			console.error(
+				`An unexpected error occurred while attempting to copy text: ${err}`
+			);
 		}
 	};
 
@@ -133,13 +138,39 @@ function App() {
 			toast.error(
 				`An unexpected error occurred while attempting to convert the sketch: ${e}.`
 			);
+			console.error(
+				`An unexpected error occurred while attempting to convert the sketch: ${e}.`
+			);
 		} finally {
 			setLoading(false);
 		}
 	};
 
+	const downloadGraphSvg = () => {
+		const container = graphvizContainerRef.current;
+		if (!container) return;
+
+		const svg = container.querySelector("svg");
+		if (!svg) return;
+
+		svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+		const svgText = new XMLSerializer().serializeToString(svg);
+		const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+		const url = URL.createObjectURL(blob);
+
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = "graph.svg";
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+
+		URL.revokeObjectURL(url);
+	};
+
 	return (
-		<div className="mb-24">
+		<div className="mb-8">
 			{loading && (
 				<div
 					className="fixed inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-xs"
@@ -277,7 +308,7 @@ function App() {
 				</div>
 			</div>
 
-			<div className="h-screen bg-neutral-100 dark:bg-neutral-900 flex flex-col px-8 py-2">
+			<div className="min-h-dvh bg-neutral-100 dark:bg-neutral-900 flex flex-col px-4 sm:px-8 py-2">
 				<ToastContainer
 					position="top-right"
 					autoClose={5000}
@@ -304,7 +335,7 @@ function App() {
 						</h1>
 					</div>
 
-					<div className="flex items-center space-x-4 mt-5 md:mt-0 justify-between">
+					<div className="flex items-center space-x-4 mt-5 md:mt-0 justify-center">
 						<div>
 							<button
 								onClick={() => setThemeDropdownOpen(o => !o)}
@@ -369,9 +400,9 @@ function App() {
 					</div>
 				</div>
 
-				<div className="w-full h-full flex flex-col md:flex-row gap-4 bg-neutral-100 dark:bg-neutral-900 rounded-xl text-neutral-900 dark:text-neutral-300">
+				<div className="w-full flex-1 min-h-0 flex flex-col gap-4 bg-neutral-100 dark:bg-neutral-900 rounded-xl text-neutral-900 dark:text-neutral-300 md:flex-row md:items-stretch">
 					<GraphSketchpad convertToGraphviz={convertToGraphviz} />
-					<div className="w-full md:w-1/3 flex flex-col min-h-0 mt-6 md:mt-0 gap-4">
+					<div className="w-full h-full md:flex-1 md:w-1/3 flex flex-col min-h-0 mt-6 md:mt-0 gap-4 ">
 						<h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
 							Generated Graphviz Code
 						</h2>
@@ -404,7 +435,7 @@ function App() {
 						</button>
 					</div>
 
-					<div className="w-full md:w-1/3 flex flex-col min-h-0 mt-6 md:mt-0 gap-4">
+					<div className="w-full h-full md:flex-1 md:w-1/3 flex flex-col min-h-0 mt-6 md:mt-0 gap-4">
 						<h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
 							Graphviz Preview
 						</h2>
@@ -420,6 +451,7 @@ function App() {
 
 						<button
 							type="button"
+							onClick={downloadGraphSvg}
 							disabled={!validGraphvizImage}
 							className="w-fit cursor-pointer flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700 disabled:bg-neutral-300 disabled:dark:bg-neutral-800 disabled:dark:text-neutral-500 disabled:hover:cursor-not-allowed">
 							<FaDownload size={16} />
