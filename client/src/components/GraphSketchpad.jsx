@@ -3,6 +3,7 @@ import {
 	FaCode,
 	FaEraser,
 	FaFileUpload,
+	FaFont,
 	FaMousePointer,
 	FaPenNib,
 	FaRegCircle,
@@ -17,6 +18,7 @@ import {
 	Image as KonvaImage,
 	Line as KonvaLine,
 	Rect as KonvaRect,
+	Text as KonvaText,
 	Layer,
 	Stage,
 	Transformer,
@@ -29,6 +31,7 @@ const DrawAction = {
 	Circle: "circle",
 	Arrow: "arrow",
 	Pen: "freedraw",
+	Text: "text",
 	Eraser: "eraser",
 };
 
@@ -58,6 +61,11 @@ const PaintOptions = [
 		label: "Pen",
 		icon: <FaPenNib size={16} />,
 	},
+	{
+		id: DrawAction.Text,
+		label: "Text",
+		icon: <FaFont size={16} />,
+	},
 	{ id: DrawAction.Eraser, label: "Eraser", icon: <FaEraser size={16} /> },
 ];
 
@@ -67,6 +75,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 	const [selected, setSelected] = useState(null);
 	const [strokeWidth, setStrokeWidth] = useState(4);
 	const [pens, setPens] = useState([]);
+	const [texts, setTexts] = useState([]);
 	const [erasers, setErasers] = useState([]);
 	const [rectangles, setRectangles] = useState([]);
 	const [circles, setCircles] = useState([]);
@@ -77,6 +86,8 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 		drawAction === DrawAction.Select
 	);
 	const [imageRenderProps, setImageRenderProps] = useState(null);
+	const [editingTextId, setEditingTextId] = useState(null);
+	const [textEditor, setTextEditor] = useState({ x: 0, y: 0, value: "" });
 
 	const wrapperRef = useRef(null);
 	const fileRef = useRef(null);
@@ -199,6 +210,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 		setRectangles([]);
 		setCircles([]);
 		setPens([]);
+		setTexts([]);
 		setErasers([]);
 		setArrows([]);
 		setImage(undefined);
@@ -210,6 +222,27 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 			}
 		}
 	}, []);
+
+	const openTextEditor = (id, t) => {
+		const container = wrapperRef.current;
+		if (!container) return;
+
+		// Position textarea relative to the stage container
+		setEditingTextId(id);
+		setTextEditor({ x: t.x, y: t.y, value: t.text });
+	};
+
+	const commitText = () => {
+		if (!editingTextId) return;
+
+		setTexts(prev =>
+			prev.map(t =>
+				t.id === editingTextId ? { ...t, text: textEditor.value } : t
+			)
+		);
+
+		setEditingTextId(null);
+	};
 
 	const onStageMouseUp = () => {
 		isPaintRef.current = false;
@@ -228,6 +261,21 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 
 		const id = uuidv4();
 		currentShapeRef.current = id;
+
+		if (drawAction === DrawAction.Text) {
+			const id = uuidv4();
+			const newText = { id, x, y, text: "", fontSize: 24, fill: color };
+
+			setTexts(prev => [...prev, newText]);
+			setSelected({ type: "text", id });
+
+			// open editor immediately
+			requestAnimationFrame(() => {
+				openTextEditor(id, newText);
+			});
+
+			return;
+		}
 
 		if (drawAction === DrawAction.Pen) {
 			setPens(prev => [
@@ -317,6 +365,8 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 
 		if (selected.type === "pen") {
 			setPens(prev => prev.filter(p => p.id !== selected.id));
+		} else if (selected.type === "text") {
+			setTexts(prev => prev.filter(t => t.id !== selected.id));
 		} else if (selected.type === "rect") {
 			setRectangles(prev => prev.filter(r => r.id !== selected.id));
 		} else if (selected.type === "circle") {
@@ -443,6 +493,27 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 								/>
 							))}
 
+							{texts.map(t => (
+								<KonvaText
+									key={t.id}
+									id={t.id}
+									x={t.x}
+									y={t.y}
+									text={t.text}
+									fontSize={t.fontSize}
+									fill={t.fill}
+									draggable={isDraggable}
+									onClick={e => onShapeClick(e, "text")}
+									onDblClick={() => openTextEditor(t.id, t)}
+									onDragEnd={e => {
+										const { x, y } = e.target.position();
+										setTexts(prev =>
+											prev.map(tt => (tt.id === t.id ? { ...tt, x, y } : tt))
+										);
+									}}
+								/>
+							))}
+
 							{erasers.map(eraser => (
 								<KonvaLine
 									key={eraser.id}
@@ -459,6 +530,34 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 							<Transformer ref={transformerRef} />
 						</Layer>
 					</Stage>
+
+					{editingTextId && (
+						<textarea
+							autoFocus
+							value={textEditor.value}
+							placeholder="Type here..."
+							onChange={e =>
+								setTextEditor(s => ({ ...s, value: e.target.value }))
+							}
+							onBlur={commitText}
+							onKeyDown={e => {
+								if (e.key === "Enter" && !e.shiftKey) {
+									e.preventDefault();
+									commitText();
+								}
+								if (e.key === "Escape") {
+									setEditingTextId(null);
+								}
+							}}
+							className="absolute z-50 border border-neutral-300 rounded-md p-2 bg-white text-black"
+							style={{
+								left: textEditor.x,
+								top: textEditor.y,
+								minWidth: 120,
+							}}
+						/>
+					)}
+
 					{drawAction === DrawAction.Select && selected && (
 						<div className="absolute left-3 bottom-3 z-20 pointer-events-none">
 							<div className="rounded-md border border-neutral-200 dark:border-neutral-700 bg-white/90 dark:bg-neutral-900/90 backdrop-blur px-3 py-2 text-xs text-neutral-700 dark:text-neutral-200 shadow-sm">
@@ -490,21 +589,6 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 									</button>
 								);
 							})}
-
-							<div className="flex items-center gap-2 px-3 py-2">
-								<label
-									className="h-8 w-8 rounded-lg cursor-pointer overflow-hidden transition-all duration-300 hover:scale-110"
-									style={{ backgroundColor: color }}
-									title="Stroke Color">
-									<input
-										type="color"
-										value={color}
-										onChange={e => setColor(e.target.value)}
-										className="opacity-0 w-full h-full cursor-pointer"
-										aria-label="Stroke Color"
-									/>
-								</label>
-							</div>
 
 							<button
 								type="button"
@@ -541,7 +625,25 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 							<FaSave size={16} />
 						</button>
 					</div>
-					<div className="rounded-xl border-2 border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 px-4 py-3 w-full lg:w-fit">
+				</div>
+
+				<div className="flex flex-row rounded-xl border-2 border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 p-4 w-full max-w-md gap-4">
+					<div className="flex items-center gap-2">
+						<label
+							className="h-12 w-12 rounded-lg cursor-pointer overflow-hidden transition-all duration-300 hover:scale-105"
+							style={{ backgroundColor: color }}
+							title="Stroke Color">
+							<input
+								type="color"
+								value={color}
+								onChange={e => setColor(e.target.value)}
+								className="opacity-0 w-full h-full cursor-pointer"
+								aria-label="Stroke Color"
+							/>
+						</label>
+					</div>
+
+					<div className="flex flex-col w-full">
 						<div className="flex items-center justify-between">
 							<p className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
 								{drawAction === "eraser" ? "Eraser Size" : "Stroke Size"}
