@@ -4,7 +4,6 @@ from PIL import Image
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision import transforms
 from transformers import (
     BitsAndBytesConfig,
     MllamaForConditionalGeneration,
@@ -219,7 +218,11 @@ class Sketch2GraphvizVLM(nn.Module):
             response_only = []
             for i in range(out.size(0)):
                 prompt_len = int(prompt_lengths[i].item())
-                response_only.append(out[i, prompt_len:].tolist())
+                response_list = out[i, prompt_len:].tolist()
+
+                response_only.append(
+                    [token for token in response_list if token != eot_id]
+                )
 
             sequences = self.processor.batch_decode(
                 response_only,

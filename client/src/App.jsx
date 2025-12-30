@@ -128,11 +128,11 @@ function App() {
 		}
 	};
 
-	const convertToGraphviz = async pngBlob => {
+	const convertToGraphviz = async (pngBlob, useRag) => {
 		try {
 			setLoading(true);
 
-			const dot = await fetchGraphvizCode(pngBlob);
+			const dot = await fetchGraphvizCode(pngBlob, useRag, 5);
 			setGraphvizCode(dot);
 		} catch (e) {
 			toast.error(

@@ -88,6 +88,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 	const [imageRenderProps, setImageRenderProps] = useState(null);
 	const [editingTextId, setEditingTextId] = useState(null);
 	const [textEditor, setTextEditor] = useState({ x: 0, y: 0, value: "" });
+	const [useRag, setUseRag] = useState(true);
 
 	const wrapperRef = useRef(null);
 	const fileRef = useRef(null);
@@ -669,16 +670,28 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 					</div>
 				</div>
 
-				<button
-					type="button"
-					onClick={async () => {
-						const blob = await exportSketchBlob();
-						convertToGraphviz(blob);
-					}}
-					className="w-full max-w-md cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700">
-					<FaCode size={16} />
-					Convert to Graphviz
-				</button>
+				<div className="w-full max-w-md flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+					<label className="flex items-center gap-3 rounded-xl border-2 border-neutral-200 bg-white p-4 text-sm font-semibold text-neutral-800 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100">
+						<input
+							type="checkbox"
+							checked={useRag}
+							onChange={e => setUseRag(e.target.checked)}
+							className="h-6 w-6 accent-blue-600 hover:cursor-pointer"
+						/>
+						Use RAG
+					</label>
+
+					<button
+						type="button"
+						onClick={async () => {
+							const blob = await exportSketchBlob();
+							convertToGraphviz(blob, useRag);
+						}}
+						className="flex-1 cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700">
+						<FaCode size={16} />
+						Convert to Graphviz
+					</button>
+				</div>
 			</div>
 		</div>
 	);

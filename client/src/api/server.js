@@ -1,12 +1,11 @@
 import api from "./axios";
 
-// POST /graphviz_code?pngBlob=...
-export const fetchGraphvizCode = async pngBlob => {
+export const fetchGraphvizCode = async (pngBlob, useRag, topKRag) => {
 	const form = new FormData();
 	form.append("file", pngBlob, "sketch.png");
 
 	const { data } = await api.post("/graphviz_code", form, {
-		headers: { "Content-Type": "multipart/form-data" },
+		params: { use_rag: useRag, top_K_rag: topKRag },
 	});
 
 	return data;

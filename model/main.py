@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from huggingface_hub import login
 from PIL import Image
 import logging
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query
 from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -90,8 +90,8 @@ async def lifespan(app: FastAPI):
         login(token=hf_token)
 
         model = load_sketch2graphviz_vlm_local(
-            model_load_dir="vlm_model",
-            epoch_load=2,
+            model_load_dir="checkpoints",
+            epoch_load=1,
             quantization=quantization,
             device=device,
         )
@@ -123,7 +123,11 @@ def root():
 
 
 @app.post("/graphviz_code", response_class=PlainTextResponse)
-async def get_graphviz_code(file: UploadFile = File(...)) -> str:
+async def get_graphviz_code(
+    file: UploadFile = File(...),
+    use_rag: bool = Query(True),
+    top_K_rag: int = Query(5, ge=0),
+) -> str:
     try:
         if not hasattr(app.state, "model"):
             logger.error("The Sketch2Graphviz VLM model is not loaded")
@@ -142,8 +146,8 @@ async def get_graphviz_code(file: UploadFile = File(...)) -> str:
             image=image,
             instruction=instruction,
             should_print_instruction=False,
-            use_rag=True,
-            top_K_rag=5,
+            use_rag=use_rag,
+            top_K_rag=top_K_rag,
             max_new_tokens=2048,
             do_sample=False,
             temperature=0.3,

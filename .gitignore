@@ -1,7 +1,6 @@
 # Custom
 checkpoints/
 postgreSQL_data/
-vlm_model/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

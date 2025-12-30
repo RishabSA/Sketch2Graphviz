@@ -2,6 +2,10 @@
 
 ![Sketch2Graphviz Icon](/client/public/assets/icon.svg)
 
+<img src="resources/decision_tree_demo.png" alt="Sketch2Graphviz Demo on a Decision Tree" width="49%"/> <img src="resources/handdrawn_demo.png" alt="Sketch2Graphviz Demo on a Handdrawn Diagram" width="49%"/>
+
+<img src="resources/test_1_demo.png" alt="Sketch2Graphviz Testing Demo 1" width="49%"/> <img src="resources/test_2_demo.png" alt="Sketch2Graphviz Testing Demo 2" width="49%"/>
+
 **Sketch2Graphviz** allows you to convert sketches or images of graphs and flowcharts to proper Graphviz code using a **LoRA fine-tuned Llama 3.2 11B Vision** and **Retrieval-Augmented Generation (RAG)** through a vector database built with PostgreSQL and PGVector, making a previously tedious, manual task fast and effortless.
 
 The client-side web application uses React JS, Vite, and Tailwind CSS.
@@ -15,7 +19,7 @@ For my setup, I used [Runpod](https://www.runpod.io/) to host my FastAPI server 
 
 ### Runpod Setup
 
-Create a pod with an appropriate GPU (~12-16 GB VRAM for the 4-bit quantized model or ~24 GB VRAM for the 16-bit quantized model). For my purposes, I deployed on a RTX 4000 ADA with 20 GB VRAM.
+Create a pod with an appropriate GPU (~12-16 GB VRAM for the 4-bit quantized model or ~24 GB VRAM for the 16-bit quantized model). For my purposes, I deployed the 4-bit quantized model on a RTX A5000 with 24 GB VRAM.
 
 - Use the **rishabsa/sketch2graphviz:latest** docker image as the template on Runpod
 - Set the container disk and volume disk storage both to ~40 GB
@@ -56,7 +60,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 exit
 
-su - postgres -c "psql -d sketch2graphvizdb -f /app/postgreSQL_data/sketch2graphvizdb.sql"
+su - postgres -c "psql -d sketch2graphvizdb -f /app/postgreSQL_data/sketch2graphvizdb_2.sql"
 ```
 
 Once all of these setup steps are finished, run the below command on your local machine from the root directory (change the runpod server to the one provided to you) to test out the FastAPI server and the Sketch2Graphviz model:
