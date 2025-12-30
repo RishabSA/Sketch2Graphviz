@@ -83,6 +83,6 @@ The model was fine-tuned with an A100 SXM GPU with 80 GB VRAM on Google Colab fr
 
 ### Retrieval-Augmented Generation (RAG) and Vector Database
 
-PostgreSQL and PGVector were used to store Graphviz code and embedding pairs for retrieval at inference-time. The top 5 most similar Graphviz codes are retrived by a similarity search by vector distance between the provided embedding at inference-time and those stored in the vector DB. The most similar Graphviz codes were then provided to the Sketch2Graphviz model for full generation as few-shot prompting.
+PostgreSQL and PGVector were used to store Graphviz code and embedding pairs for retrieval at inference-time. The top-K most similar Graphviz codes are retrived by a similarity search by Euclidean L2 vector distance between the provided embedding at inference-time and those stored in the vector DB. The top-K most similar Graphviz codes corresponding to the most similar embeddings were then provided as context to the Sketch2Graphviz model for full generation as few-shot prompting.
 
 Utilizing Retrieval-Augmented Generation (RAG) through the vector similarity search significantly improved the quality of results through few-shot prompting, leading to noticable differences in the alignment of the target and generated Graphviz codes.
