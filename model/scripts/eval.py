@@ -12,6 +12,7 @@ from scripts.data import (
     get_json_graphviz_json_dataloaders,
     make_inputs_and_labels_vlm,
 )
+from scripts.prompts import graphviz_code_from_image_instruction
 
 
 def evaluate_vlm(
@@ -116,15 +117,10 @@ if __name__ == "__main__":
         model.llama_model.config.use_cache = False
         model.llama_model.enable_input_require_grads()
 
-    instruction = (
-        "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "
-        "Given an image of a graph, using only the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
-    )
-
     test_loss = evaluate_vlm(
         model=model,
         iterator=test_dataloader,
-        instruction=instruction,
+        instruction=graphviz_code_from_image_instruction,
         description="Testing",
         model_load_dir="checkpoints",
         epoch_load=10,

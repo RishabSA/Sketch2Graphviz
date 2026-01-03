@@ -3,20 +3,26 @@ import React, { useEffect, useRef, useState } from "react";
 import {
 	FaArrowRight,
 	FaCheck,
+	FaCode,
 	FaCopy,
 	FaDesktop,
 	FaDownload,
 	FaGithub,
 	FaGlobe,
+	FaImage,
 	FaInfo,
 	FaLinkedin,
 	FaMoon,
+	FaPaperPlane,
 	FaSun,
 } from "react-icons/fa";
 import { MdOutlineClose } from "react-icons/md";
 import { Bounce, ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { fetchGraphvizCode } from "./api/server";
+import {
+	requestGraphvizCodeEdit,
+	requestGraphvizCodeFromImage,
+} from "./api/server";
 import { GraphSketchpad } from "./components/GraphSketchpad";
 
 function App() {
@@ -27,6 +33,7 @@ function App() {
 	const [loading, setLoading] = useState(false);
 	const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
 	const [graphvizCode, setGraphvizCode] = useState("");
+	const [editText, setEditText] = useState("");
 	const [validGraphvizImage, setValidGraphvizImage] = useState(false);
 	const [copied, setCopied] = useState(false);
 	const [error, setError] = useState(null);
@@ -132,7 +139,7 @@ function App() {
 		try {
 			setLoading(true);
 
-			const dot = await fetchGraphvizCode(pngBlob, useRag, 5);
+			const dot = await requestGraphvizCodeFromImage(pngBlob, useRag, 5);
 			setGraphvizCode(dot);
 		} catch (e) {
 			toast.error(
@@ -140,6 +147,24 @@ function App() {
 			);
 			console.error(
 				`An unexpected error occurred while attempting to convert the sketch: ${e}.`
+			);
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	const editGraphvizCode = async () => {
+		try {
+			setLoading(true);
+
+			const dot = await requestGraphvizCodeEdit(editText, graphvizCode);
+			setGraphvizCode(dot);
+		} catch (e) {
+			toast.error(
+				`An unexpected error occurred while attempting to make an edit to the Graphviz DOT code: ${e}.`
+			);
+			console.error(
+				`An unexpected error occurred while attempting to make an edit to the Graphviz DOT code: ${e}.`
 			);
 		} finally {
 			setLoading(false);
@@ -212,7 +237,7 @@ function App() {
 					<div className="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-neutral-600 border-neutral-200">
 						<h3 className="flex items-center text-xl font-semibold text-neutral-900 dark:text-neutral-300">
 							<FaInfo
-								size={24}
+								size={20}
 								className="stroke-current text-neutral-500 dark:text-neutral-300 mr-4"
 							/>
 							Info
@@ -403,7 +428,8 @@ function App() {
 				<div className="w-full flex-1 min-h-0 flex flex-col gap-4 bg-neutral-100 dark:bg-neutral-900 rounded-xl text-neutral-900 dark:text-neutral-300 md:flex-row md:items-stretch">
 					<GraphSketchpad convertToGraphviz={convertToGraphviz} />
 					<div className="w-full h-full md:flex-1 md:w-1/3 flex flex-col min-h-0 mt-6 md:mt-0 gap-4 ">
-						<h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+						<h2 className="flex items-center gap-2 text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+							<FaCode size={16} />
 							Generated Graphviz Code
 						</h2>
 
@@ -411,10 +437,12 @@ function App() {
 							className="relative w-full overflow-hidden rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900"
 							style={{ aspectRatio: "1 / 1" }}>
 							<textarea
-								className="h-full w-full font-mono p-3 text-sm resize-none bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+								className="h-full w-full font-mono p-3 text-sm resize-none bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-neutral-50 disabled:dark:bg-neutral-800 disabled:hover:cursor-not-allowed"
 								value={graphvizCode}
 								onChange={e => setGraphvizCode(e.target.value)}
 								spellCheck={false}
+								disabled={!graphvizCode}
+								placeholder="Generated Graphviz DOT code will appear here..."
 							/>
 							{error && (
 								<div className="absolute left-3 bottom-3">
@@ -433,10 +461,31 @@ function App() {
 							{copied ? <FaCheck size={16} /> : <FaCopy size={16} />}
 							{copied ? "Copied!" : "Copy Graphviz Code"}
 						</button>
+
+						<div className="w-full h-50 overflow-hidden rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+							<textarea
+								className="h-full w-full p-3 text-sm resize-none bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-neutral-50 disabled:dark:bg-neutral-800 disabled:hover:cursor-not-allowed"
+								value={editText}
+								onChange={e => setEditText(e.target.value)}
+								placeholder="Ask Sketch2Graphviz to make edits..."
+								disabled={!graphvizCode}
+							/>
+						</div>
+						<button
+							type="button"
+							className="flex-1 cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700 disabled:bg-neutral-300 disabled:dark:bg-neutral-800 disabled:dark:text-neutral-500 disabled:hover:cursor-not-allowed"
+							disabled={!editText}
+							onClick={async () => {
+								await editGraphvizCode();
+							}}>
+							<FaPaperPlane size={16} />
+							Request Edit
+						</button>
 					</div>
 
 					<div className="w-full h-full md:flex-1 md:w-1/3 flex flex-col min-h-0 mt-6 md:mt-0 gap-4">
-						<h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+						<h2 className="flex items-center gap-2 text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+							<FaImage size={16} />
 							Graphviz Preview
 						</h2>
 

@@ -8,6 +8,7 @@ from huggingface_hub import login
 
 from scripts.model import Sketch2GraphvizVLM, load_sketch2graphviz_vlm_local
 from scripts.psql_vector_db import get_top_k_similar_vectors_from_db
+from scripts.prompts import graphviz_code_from_image_instruction
 
 
 def predict_graphviz_dot(
@@ -132,15 +133,10 @@ if __name__ == "__main__":
         device=device,
     )
 
-    instruction = (
-        "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "
-        "Given an image of a graph, using only the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
-    )
-
     predicted_graphviz_output = predict_graphviz_dot(
         model=model,
         image="testing_graphs/graph_1.png",
-        instruction=instruction,
+        instruction=graphviz_code_from_image_instruction,
         should_print_instruction=False,
         use_rag=False,
         top_K_rag=5,

@@ -5,6 +5,7 @@ import {
 	FaFileUpload,
 	FaFont,
 	FaMousePointer,
+	FaPaintBrush,
 	FaPenNib,
 	FaRegCircle,
 	FaRegSquare,
@@ -96,6 +97,15 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 	const transformerRef = useRef(null);
 	const isPaintRef = useRef(false);
 	const currentShapeRef = useRef(undefined);
+
+	const isCanvasEmpty =
+		pens.length === 0 &&
+		erasers.length === 0 &&
+		rectangles.length === 0 &&
+		circles.length === 0 &&
+		arrows.length === 0 &&
+		texts.length === 0 &&
+		image == null;
 
 	useEffect(() => {
 		setIsDraggable(drawAction === DrawAction.Select);
@@ -396,7 +406,8 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 
 	return (
 		<div className="w-full md:flex-1 md:w-1/3 flex flex-col">
-			<h2 className="mb-4 text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+			<h2 className="flex items-center gap-2 mb-4 text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+				<FaPaintBrush size={16} />
 				Sketch your Graph
 			</h2>
 			<div className="w-full max-w-full mx-auto">
@@ -685,9 +696,10 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 						type="button"
 						onClick={async () => {
 							const blob = await exportSketchBlob();
-							convertToGraphviz(blob, useRag);
+							await convertToGraphviz(blob, useRag);
 						}}
-						className="flex-1 cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700">
+						disabled={isCanvasEmpty}
+						className="flex-1 cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700 disabled:bg-neutral-300 disabled:dark:bg-neutral-800 disabled:dark:text-neutral-500 disabled:hover:cursor-not-allowed">
 						<FaCode size={16} />
 						Convert to Graphviz
 					</button>

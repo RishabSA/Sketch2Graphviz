@@ -305,11 +305,6 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    instruction = (
-        "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "
-        "Given an image of a graph, using only the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
-    )
-
     model = Sketch2GraphvizVLM(
         llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
         quantization="16-bit",

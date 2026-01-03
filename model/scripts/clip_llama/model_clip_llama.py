@@ -17,6 +17,8 @@ from transformers import (
 from peft import PeftModel
 from huggingface_hub import login
 
+from scripts.prompts import graphviz_code_from_image_instruction
+
 
 def get_image_tiles(
     image: torch.Tensor, tile_size: int = 336, stride: int | None = None
@@ -592,11 +594,6 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    instruction = (
-        "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "
-        "Given an image of a graph, using only the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
-    )
-
     model = CLIPLlamaSketch2GraphvizVLM(
         vit_model_id="openai/clip-vit-large-patch14-336",
         llama_model_id="meta-llama/Llama-3.1-8B-Instruct",
@@ -619,7 +616,7 @@ if __name__ == "__main__":
 
     sequences = model.generate(
         images=graphviz_image_tensor,
-        prompts=[instruction],
+        prompts=[graphviz_code_from_image_instruction],
         max_new_tokens=2048,
         do_sample=False,
         temperature=1.0,

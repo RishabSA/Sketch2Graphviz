@@ -22,6 +22,7 @@ from scripts.data import (
     make_inputs_and_labels_vlm,
 )
 from scripts.eval import evaluate_vlm
+from scripts.prompts import graphviz_code_from_image_instruction
 
 
 def add_lora_to_VLM(
@@ -229,11 +230,6 @@ if __name__ == "__main__":
         model.llama_model.config.use_cache = False
         model.llama_model.enable_input_require_grads()
 
-    instruction = (
-        "You are a compiler that converts images of Graphviz diagrams into their exact Graphviz DOT code. "
-        "Given an image of a graph, using only the image, output only the DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.\n"
-    )
-
     lora_rank = 32
     lora_dropout = 0.1
 
@@ -247,7 +243,7 @@ if __name__ == "__main__":
         model=model,
         train_dataloader=train_dataloader,
         val_dataloader=test_dataloader,
-        instruction=instruction,
+        instruction=graphviz_code_from_image_instruction,
         rank=lora_rank,
         lora_dropout=lora_dropout,
         lr_lora=lr_lora,

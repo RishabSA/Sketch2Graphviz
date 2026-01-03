@@ -1,6 +1,7 @@
 import os
 from graphviz import Source
 from PIL import Image
+from io import BytesIO
 
 
 def render_graphviz_dot_code(
@@ -52,6 +53,43 @@ def render_graphviz_dot_code(
             background.save(output_path)
 
     return output_path
+
+
+def render_graphviz_dot_to_pil(
+    dot_code: str,
+    size: tuple[int, int] | None = (1024, 1024),
+) -> Image.Image:
+    src = Source(dot_code)
+    png_bytes: bytes = src.pipe(format="png")
+
+    image = Image.open(BytesIO(png_bytes)).convert("RGB")
+
+    if size is None:
+        return image
+
+    width, height = image.size
+    target_width, target_height = size
+
+    # Calculate minimum resize ratio
+    ratio_w = target_width / width
+    ratio_h = target_height / height
+    ratio = min(ratio_w, ratio_h) - 0.05
+
+    new_width = int(width * ratio)
+    new_height = int(height * ratio)
+
+    # Resize the content
+    resized_content = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+    # Paste onto a white canvas, keeping it centered
+    background = Image.new("RGB", (target_width, target_height), (255, 255, 255))
+
+    offset_x = (target_width - new_width) // 2
+    offset_y = (target_height - new_height) // 2
+
+    background.paste(resized_content, (offset_x, offset_y))
+
+    return background
 
 
 if __name__ == "__main__":

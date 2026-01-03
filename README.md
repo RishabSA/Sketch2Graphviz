@@ -66,7 +66,7 @@ su - postgres -c "psql -d sketch2graphvizdb -f /app/postgreSQL_data/sketch2graph
 Once all of these setup steps are finished, run the below command on your local machine from the root directory (change the runpod server to the one provided to you) to test out the FastAPI server and the Sketch2Graphviz model:
 
 ```
-curl -X POST https://<RUNPOD_POD>-8000.proxy.runpod.net/graphviz_code -F "file=@model/testing_graphs/graph_6.png"
+curl -X POST https://<RUNPOD_POD>-8000.proxy.runpod.net/graphviz_code_from_image -F "file=@model/testing_graphs/graph_6.png"
 ```
 
 Run the React JS + Vite frotend client with `npm run dev` from the client directory. Make sure that you set the server URL to the server URL at which the Sketch2Graphviz FastAPI server and model are hosted.
