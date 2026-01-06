@@ -181,8 +181,6 @@ def finetune_vlm_lora(
             iterator=val_dataloader,
             instruction=instruction,
             description="Validating",
-            model_load_dir=None,
-            epoch_load=epoch,
             device=device,
         )
 

@@ -57,7 +57,6 @@ CREATE EXTENSION IF NOT EXISTS vector;
 \dx
 
 \q
-
 exit
 
 su - postgres -c "psql -d sketch2graphvizdb -f /app/postgreSQL_data/sketch2graphvizdb_2.sql"

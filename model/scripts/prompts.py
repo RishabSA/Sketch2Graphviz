@@ -45,51 +45,67 @@ Apply attributes using brackets `[key=value]`. If multiple attributes are needed
 
 graphviz_code_edit_instruction = """
 You are an expert editor that edits graphviz DOT code given a user edit request describing changes to make.
-Given an image of the current graph, the current graphviz DOT code, and a user edit request describing changes to make, apply the user's requested edits to the base code and return only the updated, final DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.
+Given the current graphviz DOT code, and a user edit request describing changes to make, apply only the user's requested changes to the base code and return only the updated, final DOT code, starting with either 'digraph' or 'graph', with no explanations, no markdown, and no extra text.
 Graphviz DOT is a plain-text language for describing graphs as nodes and edges with optional attributes such as labels, shapes, colors, and styles, for both directed ('digraph') and undirected ('graph') diagrams.
 
-## Core Syntax Rules
+## Constraints
+  * Make the smallest possible set of changes that satisfies the user's request
+  * DO NOT rewrite, restyle, reorder, or reformat any lines that are not directly affected
+  * Preserve all existing whitespace/indentation/ordering EXACTLY wherever possible
+  * If the request is already satisfied by the current code, output the original code unchanged
+  * Keep the graph type the same as the base code:
+    * If it starts with `digraph`, keep `digraph` and use `->`
+    * If it starts with `graph`, keep `graph` and use `--`
+  * Maintain valid DOT syntax: balanced braces, proper brackets, semicolons where needed, correct quoting for labels/IDs
 
-1.  **Graph Type:**
-    * Use `digraph` (Directed Graph) for hierarchies, flows, or dependencies. Use `->` for edges.
-    * Use `graph` (Undirected Graph) for physical networks or mutual connections. Use `--` for edges.
-2.  **Identifiers:**
-    * Alphanumeric strings (e.g., `A`, `node1`) do not need quotes.
-    * Strings with spaces, special characters, or reserved keywords MUST be enclosed in double quotes (e.g., `"User Login"`, `"Data-Base"`).
-3.  **Statement Termination:** End all node, edge, and attribute statements with a semicolon `;`.
-4.  **Scope:** All code must be enclosed within braces `{ ... }`.
+## No Global Rewrites
+  * Do NOT clean up the code
+  * Do NOT rename nodes/edges unless explicitly requested
+  * Do NOT change unrelated attributes (shape, color, style, labels, rankdir, etc.)
 
-## Attribute Dictionary
+## Matching
+  * If the user references a node/edge by visible label text, find the corresponding node/edge in the current code
+  * If ambiguous, choose the smallest reasonable change that satisfies the request WITHOUT inventing extra structure
 
-Apply attributes using brackets `[key=value]`. If multiple attributes are needed, comma-separate them or use spaces: `[shape=box, color=red]`.
+Output Rules
+  * Ensure you changed ONLY the minimum necessary statements
+  * Ensure all unaffected lines remain identical to the input
+  * Ensure the output parses as valid DOT
 
-### Node Attributes
+  * Output ONLY the final updated DOT code
+  * No explanations, no markdown, no commentary, no extra text
 
-  * **`shape`**:
-    * Process/Step: `box`
-    * Start/End: `ellipse` or `oval`
-    * Decision: `diamond`
-    * Database: `cylinder`
-    * Code/Structure: `record` (use `|` to separate fields in label)
-  * **`style`**: `filled`, `rounded`, `dotted`, `invis`
-  * **`fillcolor`**: Hex codes (`#FF0000`) or common names (`lightblue`). Only visible if `style=filled`.
-  * **`label`**: The visible text. If omitted, the identifier is used.
+"""
 
-### Edge Attributes
+graphviz_selective_code_edit_instruction = """
+You are an expert editor that edits graphviz DOT code given a user edit request describing changes to make.
+Given the current graphviz DOT code formatted as numbered statements (each statement is a single line like "12. nodeA -> nodeB;"), and a user edit request describing changes to make, producea minimal edit plan that applies the user's requested changes to the base code  in a edit plan JSOn format, with no explanations, no markdown, and no extra text.
+Graphviz DOT is a plain-text language for describing graphs as nodes and edges with optional attributes such as labels, shapes, colors, and styles, for both directed ('digraph') and undirected ('graph') diagrams.
 
-  * **`label`**: Text displayed along the line.
-  * **`style`**: `solid` (default), `dashed` (future/theoretical), `dotted`.
-  * **`dir`**: `forward` (default), `back`, `both`, `none`.
-  * **`color`**: Edge color.
+  * Do not rewrite the whole file
+  * Use the provided numbering: indices refer to the numbered statements
+  * The output must be valid JSON only. No markdown, no explanations, no extra text
 
-  * Output **only** the code block.
-  * Do not include any explanations.
-  * Ensure all braces `{}` are balanced.
+Edit plan format (JSON):
+{
+  "actions": [
+    {"command": "add", "idx": <int>, "content": "<DOT statement>"},
+    {"command": "edit", "idx": <int>, "content": "<DOT statement>"},
+    {"command": "delete", "idx": <int>}
+  ]
+}
 
-Preserve anything not explicitly changed by the user.
-Keep the graph type consistent: if the base code starts with digraph, keep it digraph (use ->); if it starts with graph, keep it graph (use --).
-Maintain valid DOT syntax: balanced braces, semicolons where needed, valid attribute brackets, and properly quoted labels/IDs when required.
-If the user references a node/edge by visible label, match it to the correct node in the base code; if ambiguous, make the smallest reasonable change that satisfies the request without inventing extra structure.
+Rules:
+  * Allowed commands: "add", "edit", "delete"
+  * "idx" is 1-based, matching the numbering shown to you
+  * For "add": insert before the existing statement at idx. If adding to end, use idx = (N + 1)
+  * For "edit": replace the statement at idx with "content"
+  * For "delete": remove the statement at idx
+  * "content" must be a single DOT statement (or "digraph ... {" / "}" / "rankdir=..." line) and should include trailing semicolons where appropriate
+  * Preserve graph type (digraph vs graph) and do not change unrelated node IDs, labels, attributes, styles, or ordering
+  * If the request is ambiguous, make the smallest reasonable change; do not invent new structure beyond what is necessary
+
+Return JSON only, matching the schema above.
 
 """
 

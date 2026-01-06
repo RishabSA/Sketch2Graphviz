@@ -4,10 +4,9 @@ import torch
 from torch.utils.data import DataLoader
 from torch.amp import autocast
 from tqdm.auto import tqdm
-from peft import PeftModel
 from huggingface_hub import login
 
-from scripts.model import Sketch2GraphvizVLM
+from scripts.model import Sketch2GraphvizVLM, load_sketch2graphviz_vlm
 from scripts.data import (
     get_json_graphviz_json_dataloaders,
     make_inputs_and_labels_vlm,
@@ -20,24 +19,8 @@ def evaluate_vlm(
     iterator: DataLoader,
     instruction: str,
     description: str = "Testing",
-    model_load_dir: str | None = None,
-    epoch_load: int | None = None,
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> float:
-    if model_load_dir is not None and epoch_load is not None:
-        vlm_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_vlm_lora")
-        if not isinstance(model.llama_model, PeftModel):
-            model.llama_model = PeftModel.from_pretrained(
-                model.llama_model,
-                vlm_lora_dir,
-                device_map="auto",
-                torch_dtype=torch.float16,
-            )
-
-        model.device = device
-
-        print(f"Loaded VLM LoRA from: {vlm_lora_dir}")
-
     model.eval()
 
     test_loss = 0.0
@@ -106,24 +89,19 @@ if __name__ == "__main__":
         image_size=(768, 768),  # (1024, 1024)
     )
 
-    model = Sketch2GraphvizVLM(
-        llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
+    model = load_sketch2graphviz_vlm(
+        model_load_dir="checkpoints",
+        epoch_load=1,
         quantization="16-bit",
+        is_training=False,
         device=device,
     )
-
-    if model.quantization != "16-bit":
-        model.llama_model.gradient_checkpointing_enable()
-        model.llama_model.config.use_cache = False
-        model.llama_model.enable_input_require_grads()
 
     test_loss = evaluate_vlm(
         model=model,
         iterator=test_dataloader,
         instruction=graphviz_code_from_image_instruction,
         description="Testing",
-        model_load_dir="checkpoints",
-        epoch_load=10,
         device=device,
     )
 

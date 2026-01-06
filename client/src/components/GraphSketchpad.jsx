@@ -681,8 +681,8 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 					</div>
 				</div>
 
-				<div className="w-full max-w-md flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-					<label className="flex items-center gap-3 rounded-xl border-2 border-neutral-200 bg-white p-4 text-sm font-semibold text-neutral-800 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100">
+				<div className="w-full max-w-md flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+					<label className="flex items-center gap-3 rounded-xl border-2 border-neutral-200 bg-white p-4 text-xs font-semibold text-neutral-800 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100">
 						<input
 							type="checkbox"
 							checked={useRag}

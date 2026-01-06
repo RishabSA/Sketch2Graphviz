@@ -68,6 +68,42 @@ class Sketch2GraphvizVLM(nn.Module):
                 low_cpu_mem_usage=True,
             )
 
+    def load_lora_adapter(
+        self,
+        adapter_dir: str,
+        name: str,
+        is_trainable: bool = False,
+        make_active: bool = True,
+    ) -> None:
+        if isinstance(self.llama_model, PeftModel):
+            self.llama_model.load_adapter(
+                model_id=adapter_dir,
+                adapter_name=name,
+                is_trainable=is_trainable,
+                device_map="auto",
+                torch_dtype=torch.float16,
+            )
+        else:
+            self.llama_model = PeftModel.from_pretrained(
+                model=self.llama_model,
+                model_id=adapter_dir,
+                adapter_name=name,
+                is_trainable=is_trainable,
+                device_map="auto",
+                torch_dtype=torch.float16,
+            )
+
+        if make_active:
+            self.llama_model.set_adapter(name)
+
+    def set_active_adapter(self, name: str):
+        if not isinstance(self.llama_model, PeftModel):
+            raise ValueError(
+                "llama_model is not a PeftModel so a LoRA adapter cannot be loaded."
+            )
+
+        self.llama_model.set_adapter(name)
+
     def embed_images(self, images: torch.Tensor | list) -> torch.Tensor:
         batch_size = len(images) if isinstance(images, list) else images.shape[0]
 
@@ -167,7 +203,7 @@ class Sketch2GraphvizVLM(nn.Module):
 
     def generate(
         self,
-        images: torch.Tensor | Image.Image,
+        images: torch.Tensor | Image.Image | None,
         prompts: list[str],
         max_new_tokens: int = 1024,
         do_sample: bool = True,
@@ -181,10 +217,16 @@ class Sketch2GraphvizVLM(nn.Module):
             messages = [
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "image"},
-                        {"type": "text", "text": prompt},
-                    ],
+                    "content": (
+                        [
+                            {"type": "image"},
+                            {"type": "text", "text": prompt},
+                        ]
+                        if images
+                        else [
+                            {"type": "text", "text": prompt},
+                        ]
+                    ),
                 }
             ]
 
@@ -244,7 +286,7 @@ def print_num_params(model: nn.Module) -> None:
     )
 
 
-def save_sketch2graphviz_vlm_local(
+def save_sketch2graphviz_vlm(
     model: Sketch2GraphvizVLM,
     model_save_dir: str = "checkpoints",
     epoch_save: int | None = None,
@@ -261,39 +303,40 @@ def save_sketch2graphviz_vlm_local(
     print(f"Saved VLM LoRA to: {vlm_lora_dir}")
 
 
-def load_sketch2graphviz_vlm_local(
+def load_sketch2graphviz_vlm(
     model_load_dir: str = "checkpoints",
     epoch_load: int = None,
     quantization: str = "16-bit",
+    is_training: bool = False,
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> Sketch2GraphvizVLM:
-    assert (
-        model_load_dir is not None and epoch_load is not None
-    ), "You must pass in values for model_load_dir and epoch_load"
-
     model = Sketch2GraphvizVLM(
         llama_model_id="meta-llama/Llama-3.2-11B-Vision-Instruct",
         quantization=quantization,
         device=device,
     ).to(device)
 
-    if model.quantization != "16-bit":
+    if model.quantization != "16-bit" and is_training:
         model.llama_model.gradient_checkpointing_enable()
         model.llama_model.config.use_cache = False
         model.llama_model.enable_input_require_grads()
 
-    vlm_lora_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_vlm_lora")
-    model.llama_model = PeftModel.from_pretrained(
-        model.llama_model,
-        vlm_lora_dir,
-        device_map="auto",
-        torch_dtype=torch.float16,
-    )
+    if model_load_dir is not None and epoch_load is not None:
+        adapter_dir = os.path.join(model_load_dir, f"epoch_{epoch_load}_vlm_lora")
+
+        model.load_lora_adapter(
+            adapter_dir=adapter_dir,
+            name=f"epoch_{epoch_load}",
+            is_trainable=False,
+            make_active=True,
+        )
+
+        print(f"Loaded LoRA adapter weights from: {adapter_dir}")
 
     model.device = device
     model.eval()
 
-    print(f"Loaded VLM LoRA from: {vlm_lora_dir}")
+    print(f"Successfully loaded Sketch2Graphviz model")
 
     return model
 

@@ -15,9 +15,15 @@ export const requestGraphvizCodeFromImage = async (
 	return data;
 };
 
-export const requestGraphvizCodeEdit = async (editText, graphvizCode) => {
+export const requestGraphvizCodeEdit = async (
+	editText,
+	graphvizCode,
+	useSelectiveChanges
+) => {
 	const { data } = await api.post("/graphviz_code_edit", {
-		params: { edit_text: editText, graphviz_code: graphvizCode },
+		edit_text: editText,
+		graphviz_code: graphvizCode,
+		use_selective_changes: useSelectiveChanges,
 	});
 
 	return data;

@@ -6,12 +6,12 @@ import torch.nn as nn
 from torch.amp import autocast
 from huggingface_hub import login
 
-from scripts.model import Sketch2GraphvizVLM, load_sketch2graphviz_vlm_local
+from scripts.model import Sketch2GraphvizVLM, load_sketch2graphviz_vlm
 from scripts.psql_vector_db import get_top_k_similar_vectors_from_db
 from scripts.prompts import graphviz_code_from_image_instruction
 
 
-def predict_graphviz_dot(
+def predict_graphviz_dot_from_image(
     model: nn.Module,
     image: str | Image.Image | torch.Tensor,
     instruction: str,
@@ -108,6 +108,46 @@ Output ONLY valid DOT code, starting with 'digraph' or 'graph', with no explanat
     return raw_output
 
 
+def edit_graphviz_dot(
+    model: nn.Module,
+    instruction: str,
+    edit_text: str,
+    graphviz_code: str,
+    should_print_instruction: bool = False,
+    max_new_tokens: int = 1024,
+    do_sample: bool = True,
+    temperature: float = 1.0,
+    skip_special_tokens: bool = True,
+    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+) -> str:
+    model.eval()
+    model.llama_model.eval()
+    model.device = device
+
+    augmented_instruction = (
+        instruction
+        + f"\nUser Edit Request: {edit_text}\n\nCurrent Graphviz DOT Code (preserve unchanged lines exactly): {graphviz_code}"
+    )
+
+    if should_print_instruction:
+        print(f"Instruction: {augmented_instruction}\n")
+
+    with autocast(
+        device_type="cuda", dtype=torch.float16, enabled=(device.type == "cuda")
+    ), torch.inference_mode(), model.llama_model.disable_adapter():
+        sequences = model.generate(
+            images=None,
+            prompts=[augmented_instruction],
+            max_new_tokens=max_new_tokens,
+            do_sample=do_sample,
+            temperature=temperature,
+            skip_special_tokens=skip_special_tokens,
+        )
+
+    raw_output = sequences[0]
+    return raw_output
+
+
 if __name__ == "__main__":
     load_dotenv()
     hf_token = os.getenv("HF_TOKEN")
@@ -126,14 +166,15 @@ if __name__ == "__main__":
         model.llama_model.config.use_cache = False
         model.llama_model.enable_input_require_grads()
 
-    model = load_sketch2graphviz_vlm_local(
+    model = load_sketch2graphviz_vlm(
         model_load_dir="checkpoints",
         epoch_load=10,
         quantization="16-bit",
+        is_training=False,
         device=device,
     )
 
-    predicted_graphviz_output = predict_graphviz_dot(
+    predicted_graphviz_output = predict_graphviz_dot_from_image(
         model=model,
         image="testing_graphs/graph_1.png",
         instruction=graphviz_code_from_image_instruction,

@@ -6,7 +6,9 @@ FROM pytorch/pytorch:2.9.1-cuda12.6-cudnn9-runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 
 # System dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates graphviz && rm -rf /var/lib/apt/lists/*
+
+RUN dot -V
 
 WORKDIR /app
 

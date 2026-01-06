@@ -37,6 +37,7 @@ function App() {
 	const [validGraphvizImage, setValidGraphvizImage] = useState(false);
 	const [copied, setCopied] = useState(false);
 	const [error, setError] = useState(null);
+	const [useSelectiveChanges, setUseSelectiveChanges] = useState(true);
 
 	const graphvizContainerRef = useRef(null);
 	const copiedTimerRef = useRef(null);
@@ -157,7 +158,11 @@ function App() {
 		try {
 			setLoading(true);
 
-			const dot = await requestGraphvizCodeEdit(editText, graphvizCode);
+			const dot = await requestGraphvizCodeEdit(
+				editText,
+				graphvizCode,
+				useSelectiveChanges
+			);
 			setGraphvizCode(dot);
 		} catch (e) {
 			toast.error(
@@ -471,16 +476,27 @@ function App() {
 								disabled={!graphvizCode}
 							/>
 						</div>
-						<button
-							type="button"
-							className="flex-1 cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700 disabled:bg-neutral-300 disabled:dark:bg-neutral-800 disabled:dark:text-neutral-500 disabled:hover:cursor-not-allowed"
-							disabled={!editText}
-							onClick={async () => {
-								await editGraphvizCode();
-							}}>
-							<FaPaperPlane size={16} />
-							Request Edit
-						</button>
+						<div className="w-full max-w-md flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+							<label className="flex items-center gap-3 rounded-xl border-2 border-neutral-200 bg-white p-4 text-xs font-semibold text-neutral-800 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100">
+								<input
+									type="checkbox"
+									checked={useSelectiveChanges}
+									onChange={e => setUseSelectiveChanges(e.target.checked)}
+									className="h-6 w-6 accent-blue-600 hover:cursor-pointer"
+								/>
+								Selective Changes
+							</label>
+							<button
+								type="button"
+								className="flex-1 cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700 disabled:bg-neutral-300 disabled:dark:bg-neutral-800 disabled:dark:text-neutral-500 disabled:hover:cursor-not-allowed"
+								disabled={!editText}
+								onClick={async () => {
+									await editGraphvizCode();
+								}}>
+								<FaPaperPlane size={16} />
+								Request Edit
+							</button>
+						</div>
 					</div>
 
 					<div className="w-full h-full md:flex-1 md:w-1/3 flex flex-col min-h-0 mt-6 md:mt-0 gap-4">
