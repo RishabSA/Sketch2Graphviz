@@ -142,27 +142,24 @@ class Sketch2GraphvizVLM(nn.Module):
                 use_cache=False,
             )
 
-            # Get the last hidden state
             hidden_state = outputs.hidden_states[
                 -1
             ]  # shape: (batch_size, seq_len, d_model)
 
             attention_mask = (
                 inputs["attention_mask"].unsqueeze(dim=-1).to(hidden_state.dtype)
-            )  # shape (batch_size, seq_len, 1)
+            )
 
-            masked_hidden_state = (
-                hidden_state * attention_mask
-            )  # shape: (batch_size, seq_len, d_model)
+            masked_hidden_state = hidden_state * attention_mask
 
             mean_pooled_vectors = masked_hidden_state.sum(dim=1) / attention_mask.sum(
                 dim=1
             )  # shape: (batch_size, d_model)
 
-            # L2 normaliztion
+            # L2 normalization
             mean_pooled_vectors = F.normalize(mean_pooled_vectors, p=2, dim=-1)
 
-        return mean_pooled_vectors.detach().cpu()  # shape: (batch_size, d_model)
+        return mean_pooled_vectors.detach().cpu()
 
     def forward(
         self,
