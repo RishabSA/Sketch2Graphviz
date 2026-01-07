@@ -27,7 +27,7 @@ def get_graphviz_image_embeddings(
         graphviz_codes = batch["graphviz_code"]
 
         if isinstance(images, torch.Tensor):
-            images = images.to(device)  # shape: (batch_size, 3, H, W)
+            images = images.to(device)
 
         with autocast(
             device_type="cuda", dtype=torch.float16, enabled=(device.type == "cuda")
