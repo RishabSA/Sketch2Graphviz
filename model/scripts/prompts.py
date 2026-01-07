@@ -86,11 +86,11 @@ Graphviz DOT is a plain-text language for describing graphs as nodes and edges w
   * Use the provided numbering: indices refer to the numbered statements
   * The output must be valid JSON only. No markdown, no explanations, no extra text
 
-Edit plan format (JSON):
+JSON edit plan format:
 {
   "actions": [
-    {"command": "add", "idx": <int>, "content": "<DOT statement>"},
-    {"command": "edit", "idx": <int>, "content": "<DOT statement>"},
+    {"command": "add", "idx": <int>, "content": "<Graphviz DOT statement>"},
+    {"command": "edit", "idx": <int>, "content": "<Graphviz DOT statement>"},
     {"command": "delete", "idx": <int>}
   ]
 }

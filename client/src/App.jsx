@@ -263,7 +263,8 @@ function App() {
 							and flowcharts to proper Graphviz code using a LoRA fine-tuned
 							Llama 3.2 11B Vision and Retrieval-Augmented Generation (RAG)
 							through a vector database built with PostgreSQL and PGVector,
-							making a previously tedious, manual task fast and effortless.
+							making a previously tedious and manual task fast, effortless, and
+							automated.
 						</p>
 						<p className="text-base leading-relaxed text-neutral-500 dark:text-neutral-400">
 							See my personal links below to learn more about me and my work or

@@ -2,7 +2,7 @@
 	"manifest_version": 3,
 	"name": "Sketch2Graphviz — Turn sketches into professional graphs",
 	"short_name": "Sketch2Graphviz",
-	"description": "Sketch2Graphviz allows you to convert sketches or images of graphs and flowcharts to proper Graphviz code using a LoRA fine-tuned Llama 3.2 11B Vision and RAG, making a previously tedious, manual task fast and effortless.",
+	"description": "Sketch2Graphviz allows you to convert sketches or images of graphs and flowcharts to proper Graphviz code using a LoRA fine-tuned Llama 3.2 11B Vision and RAG, making a previously tedious and manual task fast, effortless, and automated.",
 	"lang": "en-US",
 	"start_url": "/",
 	"scope": "/",

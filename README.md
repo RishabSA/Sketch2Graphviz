@@ -6,10 +6,10 @@
 
 <img src="resources/test_1_demo.png" alt="Sketch2Graphviz Testing Demo 1" width="49%"/> <img src="resources/test_2_demo.png" alt="Sketch2Graphviz Testing Demo 2" width="49%"/>
 
-**Sketch2Graphviz** allows you to convert sketches or images of graphs and flowcharts to proper Graphviz code using a **LoRA fine-tuned Llama 3.2 11B Vision** and **Retrieval-Augmented Generation (RAG)** through a vector database built with PostgreSQL and PGVector, making a previously tedious, manual task fast and effortless.
+**Sketch2Graphviz** allows you to convert sketches or images of graphs and flowcharts to proper Graphviz code using a **LoRA fine-tuned Llama 3.2 11B Vision** and **Retrieval-Augmented Generation (RAG)** through a vector database built with PostgreSQL and PGVector, making a previously tedious and manual task fast, effortless, and automated.
 
 The client-side web application uses React JS, Vite, and Tailwind CSS.
-The server uses FastAPI and can be deployed with Docker.
+The server uses FastAPI and is deployed with Docker.
 
 ## Setup
 
@@ -76,7 +76,7 @@ The Sketch2Graphviz web application allows you to sketch a graph or flowchart wi
 
 ### Model and Low-Rank Adaptation (LoRA) Fine-Tuning
 
-The Sketch2Graphviz Vision-Language model (VLM) uses the 11 billino parameter `meta-llama/Llama-3.2-11B-Vision-Instruct` as a base model. The base model was fine-tuned with LoRA adapters on the linear layers in both the image encoder and text decoder. The base model was loaded with **16-bit quantization** for LoRA fine-tuning and **4-bit quantization** for inferencing and deployment on the FastAPI server to conserve memory and compute capabilities.
+The Sketch2Graphviz Vision-Language model (VLM) uses the 11 billion parameter `meta-llama/Llama-3.2-11B-Vision-Instruct` as a base model. The base model was fine-tuned with LoRA adapters on the linear layers in both the image encoder and text decoder. The base model was loaded with **16-bit quantization** for LoRA fine-tuning and **4-bit quantization** for inferencing and deployment on the FastAPI server to conserve memory and compute capabilities.
 
 The model was fine-tuned with an A100 SXM GPU with 80 GB VRAM on Google Colab from a Jupyter notebook.
 
@@ -85,3 +85,24 @@ The model was fine-tuned with an A100 SXM GPU with 80 GB VRAM on Google Colab fr
 PostgreSQL and PGVector were used to store Graphviz code and embedding pairs for retrieval at inference-time. The top-K most similar Graphviz codes are retrived by a similarity search by Euclidean L2 vector distance between the provided embedding at inference-time and those stored in the vector DB. The top-K most similar Graphviz codes corresponding to the most similar embeddings were then provided as context to the Sketch2Graphviz model for full generation as few-shot prompting.
 
 Utilizing Retrieval-Augmented Generation (RAG) through the vector similarity search significantly improved the quality of results through few-shot prompting, leading to noticable differences in the alignment of the target and generated Graphviz codes.
+
+### Editing Generated Graphviz DOT Code
+
+Sketch2Graphviz also allows users to continually improve generated Graphviz DOT code by requesting the model to make edits. Sketch2Graphviz can make rewrite and selective edits.
+
+Rewrite edits prompt the language model with just the base Graphviz DOT code sample and a user edit request (no image) and ask it to apply the user's request to improve the code. The model regenerates all of the DOT code, applying the user's edit request. However, this does lead to some issues as the model can accidentally modify unrelated parts of the Graphviz code, hurting the response.
+
+Making selective edits utilizes a different methodology in which the base Graphviz DOT code is first split into statements by certain indicators: `'{'`, `'}'`, `';'`. The statements are then indexed, and joined back together with the indexes serving as numbers. The numbered graphviz code and the user's edit request are sent to the language model with a JSON schema detailing the format to write actions.
+
+```
+{
+  "actions": [
+    {"command": "add", "idx": <int>, "content": "<DOT statement>"},
+    {"command": "edit", "idx": <int>, "content": "<DOT statement>"},
+    {"command": "delete", "idx": <int>}
+  ]
+}
+```
+
+The language model outputs a set of JSON actions to follow to make the isolated/selective changes. The model is given the option to add, edit, or delete statements following the user's request.
+Once the JSON is outputted, it is parsed and iterated through too validate and apply each of the selective actions to the base Graphviz DOT code.

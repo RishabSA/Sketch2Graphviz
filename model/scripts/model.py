@@ -97,10 +97,9 @@ class Sketch2GraphvizVLM(nn.Module):
             self.llama_model.set_adapter(name)
 
     def set_active_adapter(self, name: str):
-        if not isinstance(self.llama_model, PeftModel):
-            raise ValueError(
-                "llama_model is not a PeftModel so a LoRA adapter cannot be loaded."
-            )
+        assert isinstance(
+            self.llama_model, PeftModel
+        ), "llama_model is not a PeftModel so a LoRA adapter cannot be loaded."
 
         self.llama_model.set_adapter(name)
 
