@@ -157,8 +157,6 @@ async def get_graphviz_code_edit(request: GraphvizEditRequest) -> str:
                 request.graphviz_code
             )
 
-            print(f"Numbered Graphviz Code:\n{numbered_graphviz_code}")
-
             predicted_graphviz_output = edit_graphviz_dot(
                 model=app.state.model,
                 instruction=graphviz_selective_code_edit_instruction,
@@ -172,12 +170,11 @@ async def get_graphviz_code_edit(request: GraphvizEditRequest) -> str:
                 device=app.state.device,
             )
 
-            print(f"Predicted JSON Output:\n{predicted_graphviz_output}")
-
             updated_graphviz_code = apply_llm_edit_plan(
                 graphviz_parts=graphviz_parts,
                 llm_response_text=predicted_graphviz_output,
             )
+
             return updated_graphviz_code
         else:
             predicted_graphviz_output = edit_graphviz_dot(

@@ -8,7 +8,7 @@ def render_graphviz_dot_code(
     dot_code: str,
     name: str,
     folder: str = "graphs",
-    size: tuple[int, int] | None = (1024, 1024),
+    size: tuple[int, int] | None = (768, 768),
 ) -> str:
     os.makedirs(folder, exist_ok=True)
     src = Source(dot_code)
@@ -28,9 +28,9 @@ def render_graphviz_dot_code(
             target_width, target_height = size
 
             # Calculate minimum resize ratio
-            ratio_w = target_width / width
-            ratio_h = target_height / height
-            ratio = min(ratio_w, ratio_h) - 0.05
+            ratio_width = target_width / width
+            ratio_height = target_height / height
+            ratio = min(ratio_width, ratio_height) - 0.05
 
             new_width = int(width * ratio)
             new_height = int(height * ratio)
@@ -57,7 +57,7 @@ def render_graphviz_dot_code(
 
 def render_graphviz_dot_to_pil(
     dot_code: str,
-    size: tuple[int, int] | None = (1024, 1024),
+    size: tuple[int, int] | None = (768, 768),
 ) -> Image.Image:
     src = Source(dot_code)
     png_bytes: bytes = src.pipe(format="png")
@@ -71,9 +71,9 @@ def render_graphviz_dot_to_pil(
     target_width, target_height = size
 
     # Calculate minimum resize ratio
-    ratio_w = target_width / width
-    ratio_h = target_height / height
-    ratio = min(ratio_w, ratio_h) - 0.05
+    ratio_width = target_width / width
+    ratio_height = target_height / height
+    ratio = min(ratio_width, ratio_height) - 0.05
 
     new_width = int(width * ratio)
     new_height = int(height * ratio)

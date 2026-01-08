@@ -86,7 +86,7 @@ if __name__ == "__main__":
         json_path="simple_synthetic_data_gen.json",
         batch_size=batch_size,
         root_dir="graphviz_rendered_json",
-        image_size=(768, 768),  # (1024, 1024)
+        image_size=(768, 768),
     )
 
     model = load_sketch2graphviz_vlm(

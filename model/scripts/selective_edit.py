@@ -107,7 +107,6 @@ def validate_actions(
             validated_actions.append(
                 {"command": "add", "idx": idx - 1, "content": action["content"]}
             )
-
         elif command == "edit":
             if idx < 1 or idx > num_parts:
                 logging.warning(f"Edit idx out of range: {idx} (valid 1 - {num_parts})")
@@ -123,7 +122,6 @@ def validate_actions(
             validated_actions.append(
                 {"command": "edit", "idx": idx - 1, "content": action["content"]}
             )
-
         elif command == "delete":
             if idx < 1 or idx > num_parts:
                 logging.warning(

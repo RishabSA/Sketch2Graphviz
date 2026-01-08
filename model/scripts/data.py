@@ -20,7 +20,7 @@ class GraphvizImageCodeDataset(Dataset):
         hf_split,
         split_name: str,
         root_dir: str = "graphviz_rendered",
-        image_size: tuple[int, int] = (1024, 1024),
+        image_size: tuple[int, int] = (768, 768),
         transform: Callable | None = None,
     ):
         self.hf_split = hf_split
@@ -98,7 +98,7 @@ def get_json_graphviz_json_dataloaders(
     json_path: str = "simple_synthetic_data_gen.json",
     batch_size: int = 4,
     root_dir: str = "graphviz_rendered_json",
-    image_size: tuple[int, int] = (1024, 1024),
+    image_size: tuple[int, int] = (768, 768),
 ) -> tuple[DataLoader, DataLoader]:
     start_time = time.time()
 
@@ -204,7 +204,7 @@ def get_json_graphviz_json_dataloaders(
 def get_graphviz_hf_dataloaders(
     batch_size: int = 4,
     root_dir: str = "graphviz_rendered",
-    image_size: tuple[int, int] = (1024, 1024),
+    image_size: tuple[int, int] = (768, 768),
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     start_time = time.time()
 
@@ -518,12 +518,12 @@ if __name__ == "__main__":
     # train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
     #     batch_size=batch_size,
     #     root_dir="graphviz_rendered",
-    #     image_size=(768, 768),  # (1024, 1024)
+    #     image_size=(768, 768),
     # )
 
     train_dataloader, test_dataloader = get_json_graphviz_json_dataloaders(
         json_path="simple_synthetic_data_gen.json",
         batch_size=batch_size,
         root_dir="graphviz_rendered_json",
-        image_size=(768, 768),  # (1024, 1024)
+        image_size=(768, 768),
     )

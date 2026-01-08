@@ -2,9 +2,9 @@
 
 ![Sketch2Graphviz Icon](/client/public/assets/icon.svg)
 
-<img src="resources/decision_tree_demo.png" alt="Sketch2Graphviz Demo on a Decision Tree" width="49%"/> <img src="resources/handdrawn_demo.png" alt="Sketch2Graphviz Demo on a Handdrawn Diagram" width="49%"/>
+<img src="resources/decision_tree_with_edit_demo.png" alt="Sketch2Graphviz Demo on a Decision Tree with an Edit" width="49%"/> <img src="resources/sketch_demo.png" alt="Sketch2Graphviz Demo on a Sketch of a Diagram" width="49%"/>
 
-<img src="resources/test_1_demo.png" alt="Sketch2Graphviz Testing Demo 1" width="49%"/> <img src="resources/test_2_demo.png" alt="Sketch2Graphviz Testing Demo 2" width="49%"/>
+<img src="resources/system_architecture_demo.png" alt="Sketch2Graphviz Architecture Diagram Demo" width="49%"/> <img src="resources/flowchart_demo.png" alt="Sketch2Graphviz Flowchart Demo with an Edit" width="49%"/>
 
 **Sketch2Graphviz** allows you to convert sketches or images of graphs and flowcharts to proper Graphviz code using a **LoRA fine-tuned Llama 3.2 11B Vision** and **Retrieval-Augmented Generation (RAG)** through a vector database built with PostgreSQL and PGVector, making a previously tedious and manual task fast, effortless, and automated.
 
