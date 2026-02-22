@@ -7,11 +7,10 @@ from tqdm.auto import tqdm
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from datasets import load_dataset, concatenate_datasets, Dataset as HFDataset
+from datasets import Dataset as HFDataset
 
 from scripts.graphviz_renderer import render_graphviz_dot_code
 from scripts.model import Sketch2GraphvizVLM
-from scripts.clip_llama.model_clip_llama import CLIPLlamaSketch2GraphvizVLM
 
 
 class GraphvizImageCodeDataset(Dataset):
@@ -44,7 +43,7 @@ class GraphvizImageCodeDataset(Dataset):
             filename = f"{split_name}_{i}.png"
             path = os.path.join(self.split_dir, filename)
 
-            # Image exists from a previous run
+            # Skip image if it exists from a previous render
             if os.path.exists(path):
                 self.valid_indices.append(i)
                 self.image_paths.append(path)
@@ -54,6 +53,7 @@ class GraphvizImageCodeDataset(Dataset):
             graphviz_dot_code = self.hf_split[i]["graphviz_code"]
 
             try:
+                # Render and resize Graphviz image
                 render_graphviz_dot_code(
                     dot_code=graphviz_dot_code,
                     name=f"{split_name}_{i}",
@@ -61,9 +61,11 @@ class GraphvizImageCodeDataset(Dataset):
                     size=image_size,
                 )
 
+                # Only store the valid/successfully rendered Graphviz images
                 self.valid_indices.append(i)
                 self.image_paths.append(path)
             except Exception as e:
+                # If an error occurs while rendering a Graphviz image, skip it
                 skipped += 1
 
                 print(f"Skipping index {i} due to Graphviz error: {e}")
@@ -99,6 +101,7 @@ def get_json_graphviz_json_dataloaders(
     batch_size: int = 4,
     root_dir: str = "graphviz_rendered_json",
     image_size: tuple[int, int] = (768, 768),
+    return_tensor: bool = False,
 ) -> tuple[DataLoader, DataLoader]:
     start_time = time.time()
 
@@ -109,20 +112,20 @@ def get_json_graphviz_json_dataloaders(
     # Wrap data in a HuggingFace dataset
     hf_dataset = HFDataset.from_dict({"graphviz_code": dot_code_list})
 
-    ds_split = hf_dataset.train_test_split(test_size=0.1, seed=42)
-    train_split = ds_split["train"]
-    test_split = ds_split["test"]
+    hf_dataset_split = hf_dataset.train_test_split(test_size=0.1, seed=42)
+    train_split, test_split = hf_dataset_split["train"], hf_dataset_split["test"]
 
-    # Image Transforms
+    # Image Transforms for training
     train_transform = transforms.Compose(
         [
             transforms.RandomApply(
                 [
-                    # Brightness/contrast
+                    # Slight random brightness and contrast changes
                     transforms.ColorJitter(brightness=0.2, contrast=0.2)
                 ],
                 p=0.3,
             ),
+            # Slight random translations and scaling
             transforms.RandomAffine(
                 degrees=0,
                 translate=(0.03, 0.03),
@@ -130,20 +133,17 @@ def get_json_graphviz_json_dataloaders(
                 fill=(255, 255, 255),
             ),
             transforms.RandomApply(
-                [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.1
+                # Slight random blurring
+                [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))],
+                p=0.1,
             ),
-            # transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
         ]
+        + ([transforms.ToTensor()] if return_tensor else [])
     )
 
-    # test_transform = transforms.Compose(
-    #     [
-    #         transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
-    #     ]
-    # )
+    test_transform = transforms.ToTensor() if return_tensor else None
 
-    test_transform = None
-
+    # Construct train and test datasets with rendered and saved Graphviz iamges
     train_dataset = GraphvizImageCodeDataset(
         hf_split=train_split,
         split_name="train",
@@ -182,6 +182,7 @@ def get_json_graphviz_json_dataloaders(
         batch_size=batch_size,
         shuffle=True,
         num_workers=os.cpu_count(),
+        persistent_workers=True,
         pin_memory=True,
         collate_fn=collate_fn,
     )
@@ -191,6 +192,7 @@ def get_json_graphviz_json_dataloaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=os.cpu_count(),
+        persistent_workers=True,
         pin_memory=True,
         collate_fn=collate_fn,
     )
@@ -199,184 +201,6 @@ def get_json_graphviz_json_dataloaders(
     print(f"JSON data load and render time: {(end_time - start_time):.4f} seconds")
 
     return train_dataloader, test_dataloader
-
-
-def get_graphviz_hf_dataloaders(
-    batch_size: int = 4,
-    root_dir: str = "graphviz_rendered",
-    image_size: tuple[int, int] = (768, 768),
-) -> tuple[DataLoader, DataLoader, DataLoader]:
-    start_time = time.time()
-
-    legal_viz = load_dataset("mizuumi1/LegalViz")
-    legal_viz = legal_viz.rename_column("graphviz", "graphviz_code")
-    legal_viz_train = legal_viz["train"].filter(
-        lambda x: "digraph" in x["graphviz_code"]
-    )
-    legal_viz_val = legal_viz["validation"].filter(
-        lambda x: "digraph" in x["graphviz_code"]
-    )
-    legal_viz_test = legal_viz["test"].filter(lambda x: "digraph" in x["graphviz_code"])
-
-    v_gen = load_dataset("vgbench/VGen")
-    v_gen = v_gen.rename_column("code", "graphviz_code")
-    v_gen_train = v_gen["train"].filter(lambda x: "digraph" in x["graphviz_code"])
-
-    diagram_gen_coding = load_dataset(
-        "DiagramAgent/DiagramGenBenchmark", "DiagramCoding"
-    )
-    diagram_gen_coding = diagram_gen_coding.rename_column(
-        "reference_answer", "graphviz_code"
-    )
-    diagram_gen_coding = diagram_gen_coding["test"].filter(
-        lambda x: "digraph" in x["graphviz_code"]
-    )
-
-    diagram_gen_editing = load_dataset(
-        "DiagramAgent/DiagramGenBenchmark", "DiagramEditing"
-    )
-    diagram_gen_editing = diagram_gen_editing.rename_column(
-        "reference_answer", "graphviz_code"
-    )
-    diagram_gen_editing = diagram_gen_editing["test"].filter(
-        lambda x: "digraph" in x["graphviz_code"]
-    )
-
-    diagram_gen_generation = load_dataset(
-        "DiagramAgent/DiagramGenBenchmark", "DiagramGeneration"
-    )
-    diagram_gen_generation = diagram_gen_generation.rename_column(
-        "reference", "graphviz_code"
-    )
-    diagram_gen_generation = diagram_gen_generation["test"].filter(
-        lambda x: "digraph" in x["graphviz_code"]
-    )
-
-    dataset = concatenate_datasets(
-        [
-            # legal_viz_train,
-            v_gen_train,
-            diagram_gen_coding,
-            diagram_gen_editing,
-            diagram_gen_generation,
-        ]
-    )
-
-    dataset_split = dataset.train_test_split(test_size=0.1, seed=42)
-    train_split = dataset_split["train"]
-    test_split = dataset_split["test"]
-
-    val_split = concatenate_datasets([legal_viz_val])
-    # test_split = concatenate_datasets([legal_viz_test])
-
-    # Image Transforms
-    train_transform = transforms.Compose(
-        [
-            transforms.RandomApply(
-                [
-                    # Brightness/contrast
-                    transforms.ColorJitter(brightness=0.2, contrast=0.2)
-                ],
-                p=0.3,
-            ),
-            transforms.RandomAffine(
-                degrees=0,
-                translate=(0.03, 0.03),
-                scale=(0.97, 1.03),
-                fill=(255, 255, 255),
-            ),
-            transforms.RandomApply(
-                [transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.1
-            ),
-            transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
-        ]
-    )
-
-    test_transform = transforms.Compose(
-        [
-            transforms.ToTensor(),  # shape: (3, H, W) with pixels between [0, 1]
-        ]
-    )
-
-    train_dataset = GraphvizImageCodeDataset(
-        hf_split=train_split,
-        split_name="train",
-        root_dir=root_dir,
-        image_size=image_size,
-        transform=train_transform,
-    )
-
-    val_dataset = GraphvizImageCodeDataset(
-        hf_split=val_split,
-        split_name="validation",
-        root_dir=root_dir,
-        image_size=image_size,
-        transform=test_transform,
-    )
-
-    test_dataset = GraphvizImageCodeDataset(
-        hf_split=test_split,
-        split_name="test",
-        root_dir=root_dir,
-        image_size=image_size,
-        transform=test_transform,
-    )
-
-    def collate_fn(batch: list[dict]) -> dict:
-        images = torch.stack(
-            [item["image"] for item in batch], dim=0
-        )  # shape: (batch_size, 3, H, W)
-        codes = [item["graphviz_code"] for item in batch]
-        paths = [item["image_path"] for item in batch]
-
-        return {
-            "images": images,
-            "graphviz_code": codes,
-            "image_path": paths,
-        }
-
-    # def collate_fn(batch: list[dict]) -> dict:
-    #     images = [item["image"] for item in batch]
-    #     codes = [item["graphviz_code"] for item in batch]
-    #     paths = [item["image_path"] for item in batch]
-
-    #     return {
-    #         "images": images,  # list[Tensor]
-    #         "graphviz_code": codes,
-    #         "image_path": paths,
-    #     }
-
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=os.cpu_count(),
-        pin_memory=True,
-        collate_fn=collate_fn,
-    )
-
-    val_dataloader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=os.cpu_count(),
-        pin_memory=True,
-        collate_fn=collate_fn,
-    )
-
-    test_dataloader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=os.cpu_count(),
-        pin_memory=True,
-        collate_fn=collate_fn,
-    )
-
-    end_time = time.time()
-    print(f"Data download and setup time: {(end_time - start_time):.4f} seconds")
-
-    return train_dataloader, val_dataloader, test_dataloader
 
 
 def make_inputs_and_labels_vlm(
@@ -398,9 +222,10 @@ def make_inputs_and_labels_vlm(
         prefix_message, add_generation_prompt=True
     )
 
+    # Simulate full instruction + generated graphviz code for full text output
     full_texts = [prefix + code + eot_token for code in graphviz_code]
 
-    # Process sequences and images
+    # Process full text sequences and images
     inputs = model.processor(
         images=images,
         text=full_texts,
@@ -416,7 +241,7 @@ def make_inputs_and_labels_vlm(
     prefix_ids = model.tokenizer(prefix, add_special_tokens=False).input_ids
     prefix_len = len(prefix_ids)
 
-    # Mask the prefix for every sample
+    # Mask the prefix for every sample and only keep generated tokens for labels
     seq_len = labels.shape[1]
     mask_len = min(prefix_len, seq_len)
     labels[:, :mask_len] = -100
@@ -427,103 +252,13 @@ def make_inputs_and_labels_vlm(
     return inputs, labels
 
 
-def make_inputs_and_labels_clip_llama_vlm(
-    model: CLIPLlamaSketch2GraphvizVLM,
-    images: torch.Tensor,
-    graphviz_code: list[str],
-    instruction: str,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    vit_tokens, vit_attention_mask = model.embed_images(images)
-    # shapes: (batch_size, num_patches, d_llama), (batch_size, num_patches)
-    # or, depending on tiling
-    # shapes: (batch_size, max_seq_len, d_llama), (batch_size, max_seq_len)
-
-    batch_size, num_vit_tokens, d_llama = vit_tokens.shape
-
-    eot_token = "<|end_of_text|>"
-    prompts = [instruction + code + eot_token for code in graphviz_code]
-
-    llama_inputs = model.llama_tokenizer(
-        prompts,
-        padding=True,
-        truncation=True,
-        max_length=2048,
-        return_tensors="pt",
-    ).to(model.device)
-
-    llama_input_ids = llama_inputs.input_ids  # shape: (batch_size, seq_len)
-    llama_attention_mask = llama_inputs.attention_mask  # shape: (batch_size, seq_len)
-
-    # Get text embeddings from Llama
-    text_embeds = model.llama_model.get_input_embeddings()(
-        llama_input_ids
-    )  # shape: (batch_size, seq_len, d_llama)
-
-    # Mask instruction tokens so loss is only on code
-    instruction_ids = model.llama_tokenizer(
-        [instruction], add_special_tokens=False, return_tensors="pt"
-    ).input_ids.to(model.device)
-    instruction_len = instruction_ids.shape[1]
-
-    if model.use_cross_attention:
-        # Fuse ViT and Llama embeddings with Cross-Attention
-        inputs_embeds = model.image_text_adapter(
-            text_embeds,  # Query
-            vit_tokens,  # Key/Value
-            vit_attention_mask,
-        )  # shape: (batch_size, seq_len, d_model)
-
-        full_attention_mask = llama_attention_mask  # shape: (batch_size, seq_len)
-
-        labels = llama_input_ids.clone()  # shape: (batch_size, seq_len)
-
-        # Mask instructions and padding tokens
-        labels[:, :instruction_len] = -100
-        labels[full_attention_mask == 0] = -100
-    else:
-        # Concatenate ViT and Llama embeddings along sequence dim
-        inputs_embeds = torch.cat(
-            [vit_tokens, text_embeds], dim=1
-        )  # shape: (batch_size, num_vit_tokens + seq_len, d_llama)
-
-        full_attention_mask = torch.cat(
-            [vit_attention_mask, llama_attention_mask], dim=1
-        )  # shape: (batch_size, num_vit_tokens + seq_len)
-
-        # Use -100 for visual tokens
-        labels = torch.full(
-            (batch_size, num_vit_tokens + llama_input_ids.shape[1]),
-            -100,
-            dtype=torch.long,
-            device=model.device,
-        )  # shape: (batch_size, num_vit_tokens + seq_len)
-
-        llama_output_labels = llama_input_ids.clone()  # shape: (batch_size, seq_len)
-
-        # Fill with text tokens (ViT tokens are -100)
-        labels[:, num_vit_tokens:] = (
-            llama_output_labels  # shape: (batch_size, num_vit_tokens + seq_len)
-        )
-
-        # Mask instructions and padding tokens
-        labels[:, num_vit_tokens : num_vit_tokens + instruction_len] = -100
-        labels[full_attention_mask == 0] = -100
-
-    return inputs_embeds, full_attention_mask, labels
-
-
 if __name__ == "__main__":
     batch_size = 1
-
-    # train_dataloader, val_dataloader, test_dataloader = get_graphviz_hf_dataloaders(
-    #     batch_size=batch_size,
-    #     root_dir="graphviz_rendered",
-    #     image_size=(768, 768),
-    # )
 
     train_dataloader, test_dataloader = get_json_graphviz_json_dataloaders(
         json_path="simple_synthetic_data_gen.json",
         batch_size=batch_size,
         root_dir="graphviz_rendered_json",
         image_size=(768, 768),
+        return_tensor=False,
     )

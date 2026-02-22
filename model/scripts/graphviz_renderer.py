@@ -1,7 +1,7 @@
 import os
+from io import BytesIO
 from graphviz import Source
 from PIL import Image
-from io import BytesIO
 
 
 def render_graphviz_dot_code(
@@ -13,6 +13,7 @@ def render_graphviz_dot_code(
     os.makedirs(folder, exist_ok=True)
     src = Source(dot_code)
 
+    # Render Graphviz graph from source DOT code
     output_path = src.render(
         filename=name,
         directory=folder,
@@ -23,6 +24,7 @@ def render_graphviz_dot_code(
     )
 
     if size is not None:
+        # Resize the rendered Graphviz image if provided with a size by pasting a resized image onto a blank canvas
         with Image.open(output_path) as image:
             width, height = image.size
             target_width, target_height = size
@@ -30,6 +32,8 @@ def render_graphviz_dot_code(
             # Calculate minimum resize ratio
             ratio_width = target_width / width
             ratio_height = target_height / height
+
+            # Add a slight padding from the edge of image
             ratio = min(ratio_width, ratio_height) - 0.05
 
             new_width = int(width * ratio)
@@ -55,13 +59,14 @@ def render_graphviz_dot_code(
     return output_path
 
 
-def render_graphviz_dot_to_pil(
+def render_graphviz_dot_code_pil(
     dot_code: str,
     size: tuple[int, int] | None = (768, 768),
 ) -> Image.Image:
     src = Source(dot_code)
-    png_bytes: bytes = src.pipe(format="png")
 
+    # Render to PNG bytes in memory
+    png_bytes = src.pipe(format="png")
     image = Image.open(BytesIO(png_bytes)).convert("RGB")
 
     if size is None:
@@ -73,6 +78,8 @@ def render_graphviz_dot_to_pil(
     # Calculate minimum resize ratio
     ratio_width = target_width / width
     ratio_height = target_height / height
+
+    # Add a slight padding from the edge of image
     ratio = min(ratio_width, ratio_height) - 0.05
 
     new_width = int(width * ratio)
@@ -94,10 +101,19 @@ def render_graphviz_dot_to_pil(
 
 if __name__ == "__main__":
     dot_code = """
-    digraph G26 { node [shape=hex, style=filled, fillcolor=white]; hA [fillcolor=gold]; hB [fillcolor=lightsteelblue]; hC [fillcolor=lightgreen]; hD [fillcolor=lightpink]; hA -> hB [color=black, style=solid, weight=4, penwidth=2]; hB -> hC [color=blue, style=dotted, weight=1]; hC -> hD [color=gray, style=dashed, weight=2]; }
+digraph G26 {
+    node [shape=hex, style=filled, fillcolor=white]; 
+    hA [fillcolor=gold]; 
+    hB [fillcolor=lightsteelblue]; 
+    hC [fillcolor=lightgreen]; 
+    hD [fillcolor=lightpink]; 
+    hA -> hB [color=black, style=solid, weight=4, penwidth=2]; 
+    hB -> hC [color=blue, style=dotted, weight=1]; 
+    hC -> hD [color=gray, style=dashed, weight=2]; 
+}
     """
 
     file_path = render_graphviz_dot_code(
-        dot_code=dot_code, name="graph_4", folder="testing_outputs", size=(768, 768)
+        dot_code=dot_code, name="test_graph", folder="testing_outputs", size=(768, 768)
     )
     print(f"Saved graph to: {file_path}")

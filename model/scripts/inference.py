@@ -12,7 +12,7 @@ from scripts.prompts import graphviz_code_from_image_instruction
 
 
 def predict_graphviz_dot_from_image(
-    model: nn.Module,
+    model: Sketch2GraphvizVLM,
     image: str | Image.Image | torch.Tensor,
     instruction: str,
     should_print_instruction: bool = False,
@@ -57,6 +57,7 @@ def predict_graphviz_dot_from_image(
             embedding_vector.cpu().squeeze(dim=0).numpy().astype("float32")
         )
 
+        # Obtain the top-K most similar Graphviz DOT codes by Euclidean (L2) distance between embedding vectors
         vector_similarity_results = get_top_k_similar_vectors_from_db(
             embedding_vector=embedding_query_vector,
             top_K=top_K_rag,
@@ -77,6 +78,7 @@ def predict_graphviz_dot_from_image(
         if rag_examples:
             rag_instruction_block = "\n\n".join(rag_examples)
 
+            # Add RAG instructions and top-K RAG examples to the instruction prompt
             augmented_instruction = f"""{instruction}
             
 Below are DOT code examples for graphs that are similar to the current image.
@@ -132,6 +134,7 @@ def edit_graphviz_dot(
     if should_print_instruction:
         print(f"Instruction: {augmented_instruction}\n")
 
+    # Temporarily disable the LoRA adapter when generating JSON for selective edits
     with autocast(
         device_type="cuda", dtype=torch.float16, enabled=(device.type == "cuda")
     ), torch.inference_mode(), model.llama_model.disable_adapter():

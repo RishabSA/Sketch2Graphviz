@@ -33,7 +33,7 @@ The FastAPI server will being to start, and in the logs, you should see the `met
 
 Once this setup is complete, PostgreSQL and PGVector need to be setup from the web terminal for the pod. Access the Runpod web terminal and use the below commands in order, to install and setup PostgreSQL, PGVector, and the Sketch2Graphviz Database. `sketch2graphvizdb.sql` is provided in the Docker image and contains all of the stored Graphviz codes and their corresponding vector embeddings to be used in a similarity search for RAG.
 
-```
+```bash
 apt update
 apt install -y postgresql-common ca-certificates
 apt install -y postgresql postgresql-contrib
@@ -64,7 +64,7 @@ su - postgres -c "psql -d sketch2graphvizdb -f /app/postgreSQL_data/sketch2graph
 
 Once all of these setup steps are finished, run the below command on your local machine from the root directory (change the runpod server to the one provided to you) to test out the FastAPI server and the Sketch2Graphviz model:
 
-```
+```bash
 curl -X POST https://<RUNPOD_POD>-8000.proxy.runpod.net/graphviz_code_from_image -F "file=@model/testing_graphs/graph_6.png"
 ```
 
@@ -76,11 +76,13 @@ The Sketch2Graphviz web application allows you to sketch a graph or flowchart wi
 
 ### Model and Low-Rank Adaptation (LoRA) Fine-Tuning
 
-The Sketch2Graphviz Vision-Language model (VLM) uses the 11 billion parameter `meta-llama/Llama-3.2-11B-Vision-Instruct` as a base model. The base model was fine-tuned with LoRA adapters on the linear layers in both the image encoder and text decoder. The base model was loaded with **16-bit quantization** for LoRA fine-tuning and **4-bit quantization** for inferencing and deployment on the FastAPI server to conserve memory and compute capabilities.
+The Sketch2Graphviz Vision-Language model (VLM) uses the 11 billion parameter `meta-llama/Llama-3.2-11B-Vision-Instruct` as a base model. The base model was fine-tuned with LoRA adapters on the linear layers in both the image encoder and text decoder. The model was loaded with **16-bit quantization** for LoRA fine-tuning and **4-bit quantization** for inferencing and deployment on the FastAPI server to reduce VRAM usage and deployment costs, with no noticeable impact on results
 
 The model was fine-tuned with an A100 SXM GPU with 80 GB VRAM on Google Colab from a Jupyter notebook.
 
 ### Retrieval-Augmented Generation (RAG) and Vector Database
+
+Images are passed through the VLM with a constant prompt. The prompt and image data are passed through the VLM (image is passed through the image encoder) to get the hidden state output of the model. The hidden state is averaged over all token positions to get a single embedding vector representation of size `d_model` for the image. This is then L2 normalized to get a final image embedding vector.
 
 PostgreSQL and PGVector were used to store Graphviz code and embedding pairs for retrieval at inference-time. The top-K most similar Graphviz codes are retrived by a similarity search by Euclidean L2 vector distance between the provided embedding at inference-time and those stored in the vector DB. The top-K most similar Graphviz codes corresponding to the most similar embeddings were then provided as context to the Sketch2Graphviz model for full generation as few-shot prompting.
 
@@ -94,7 +96,7 @@ Rewrite edits prompt the language model with just the base Graphviz DOT code sam
 
 Making selective edits utilizes a different methodology in which the base Graphviz DOT code is first split into statements by certain indicators: `'{'`, `'}'`, `';'`. The statements are then indexed, and joined back together with the indexes serving as numbers. The numbered graphviz code and the user's edit request are sent to the language model with a JSON schema detailing the format to write actions.
 
-```
+```json
 {
   "actions": [
     {"command": "add", "idx": <int>, "content": "<DOT statement>"},

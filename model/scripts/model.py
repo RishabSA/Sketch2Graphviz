@@ -37,7 +37,7 @@ class Sketch2GraphvizVLM(nn.Module):
         self.tokenizer = self.processor.tokenizer
 
         if quantization == "4-bit":
-            # 4-bit Bits and Bytes config
+            # 4-bit Bits and Bytes Config
             bnb_config_4bit = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_use_double_quant=True,
@@ -52,6 +52,7 @@ class Sketch2GraphvizVLM(nn.Module):
                 low_cpu_mem_usage=True,
             )
         elif quantization == "8-bit":
+            # 8-bit Bits and bytes Config
             bnb_config_8bit = BitsAndBytesConfig(load_in_8bit=True)
 
             self.llama_model = MllamaForConditionalGeneration.from_pretrained(
@@ -61,6 +62,7 @@ class Sketch2GraphvizVLM(nn.Module):
                 low_cpu_mem_usage=True,
             )
         elif quantization == "16-bit":
+            # No Bits and Bytes config needed for 16-bit
             self.llama_model = MllamaForConditionalGeneration.from_pretrained(
                 llama_model_id,
                 device_map="auto",
@@ -76,6 +78,7 @@ class Sketch2GraphvizVLM(nn.Module):
         make_active: bool = True,
     ) -> None:
         if isinstance(self.llama_model, PeftModel):
+            # Load Peft adapter if llama_model is already a PeftModel
             self.llama_model.load_adapter(
                 model_id=adapter_dir,
                 adapter_name=name,
@@ -84,6 +87,7 @@ class Sketch2GraphvizVLM(nn.Module):
                 torch_dtype=torch.float16,
             )
         else:
+            # Convert llama_model to PeftModel if not already
             self.llama_model = PeftModel.from_pretrained(
                 model=self.llama_model,
                 model_id=adapter_dir,
@@ -106,6 +110,7 @@ class Sketch2GraphvizVLM(nn.Module):
     def embed_images(self, images: torch.Tensor | list) -> torch.Tensor:
         batch_size = len(images) if isinstance(images, list) else images.shape[0]
 
+        # Same prompt is used for encoding all images (Llama 3.2 vision needs a prompt)
         prompt = "You are an image encoder. Embed this Graphviz diagram for retrieval."
 
         input_texts = []
@@ -161,42 +166,6 @@ class Sketch2GraphvizVLM(nn.Module):
 
         return mean_pooled_vectors.detach().cpu()
 
-    def forward(
-        self,
-        images: torch.Tensor,
-        prompts: list[str],
-    ):
-        # Use forward for training
-
-        input_texts = []
-        for prompt in prompts:
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image"},
-                        {"type": "text", "text": prompt},
-                    ],
-                }
-            ]
-
-            input_text = self.processor.apply_chat_template(
-                messages, add_generation_prompt=True
-            )
-            input_texts.append(input_text)
-
-        inputs = self.processor(
-            images=images,
-            text=input_texts,
-            add_special_tokens=False,
-            padding=True,
-            return_tensors="pt",
-        ).to(self.device)
-
-        outputs = self.llama_model(**inputs)
-
-        return outputs
-
     def generate(
         self,
         images: torch.Tensor | Image.Image | None,
@@ -206,10 +175,9 @@ class Sketch2GraphvizVLM(nn.Module):
         temperature: float = 1.0,
         skip_special_tokens: bool = True,
     ) -> list[str]:
-        # Use generate for inference
-
         input_texts = []
         for prompt in prompts:
+            # images is PIL image for standard graph to code and images is None for selective edits
             messages = [
                 {
                     "role": "user",
@@ -253,6 +221,7 @@ class Sketch2GraphvizVLM(nn.Module):
                 eos_token_id=[self.tokenizer.eos_token_id, eot_id],
             )
 
+            # Extract only the generated Graphviz code response from the full prompt + generation text
             response_only = []
             for i in range(out.size(0)):
                 prompt_len = int(prompt_lengths[i].item())

@@ -12,6 +12,7 @@ def store_embeddings_in_db(
     embedding_dim: int = 4096,
 ) -> bool:
     try:
+        # Connect to the PostgreSQL database
         conn = psycopg2.connect(
             f"dbname={dbname} user={user}" if user is not None else f"dbname={dbname}"
         )
@@ -19,6 +20,7 @@ def store_embeddings_in_db(
         register_vector(conn)
         cur = conn.cursor()
 
+        # Create the table if it does not exist
         cur.execute(
             f"""
             CREATE TABLE IF NOT EXISTS {table_name} (
@@ -34,6 +36,7 @@ def store_embeddings_in_db(
         ):
             embedding_vector = np.asarray(embedding_vector, dtype="float32").tolist()
 
+            # Insert each embedding vector and Graphviz code pair into the table
             cur.execute(
                 f"""
                 INSERT INTO {table_name} (code, embedding)
@@ -68,6 +71,7 @@ def get_top_k_similar_vectors_from_db(
     table_name: str = "graphviz_embeddings",
 ) -> list[tuple[int, str, float]]:
     try:
+        # Connect to the PostgreSQL database
         conn = psycopg2.connect(
             f"dbname={dbname} user={user}" if user is not None else f"dbname={dbname}"
         )
@@ -76,6 +80,7 @@ def get_top_k_similar_vectors_from_db(
 
         embedding_vector = np.asarray(embedding_vector, dtype="float32")
 
+        # Get the top-K closest Graphviz codes from the table by Euclidean (L2) distance to the embedding vector
         cur.execute(
             f"""
             SELECT id, code, embedding <-> %s AS distance

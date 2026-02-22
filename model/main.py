@@ -111,7 +111,7 @@ async def get_graphviz_code_from_image(
         image = Image.open(io.BytesIO(content)).convert("RGB")
 
         if image.size != (768, 768):
-            image = image.resize((768, 768), resample=Image.NEAREST)
+            image = image.resize((768, 768), resample=Image.LANCZOS)
 
         predicted_graphviz_output = predict_graphviz_dot_from_image(
             model=app.state.model,

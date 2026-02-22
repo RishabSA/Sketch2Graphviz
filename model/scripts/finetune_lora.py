@@ -34,7 +34,7 @@ def add_lora_to_VLM(
 
     llama_model = model.llama_model
 
-    # k-bit training (QLoRA)
+    # Quantized-LoRA (QLoRA) for non-16-bit training
     if model.quantization != "16-bit":
         llama_model = prepare_model_for_kbit_training(llama_model)
 
@@ -60,6 +60,7 @@ def add_lora_to_VLM(
         task_type=TaskType.CAUSAL_LM,
     )
 
+    # Add Peft LoRA adapters to the VLM
     llama_model = get_peft_model(llama_model, lora_config)
     model.llama_model = llama_model
 
@@ -77,17 +78,20 @@ def finetune_vlm_lora(
     instruction: str,
     rank: int = 32,
     lora_dropout: float = 0.1,
-    lr_lora: float = 2e-4,
-    weight_decay_lora: float = 0.0,
+    lr: float = 2e-4,
+    weight_decay: float = 0.0,
     num_epochs: int = 10,
     use_val_early_stopping: bool = True,
     max_grad_norm: float = 1.0,
     model_save_dir: str = "checkpoints",
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> tuple[Sketch2GraphvizVLM, list[float], list[float]]:
+    # Add Peft LoRA adapters to the VLM
+    # The ideal alpha = 2 * rank
     model = add_lora_to_VLM(model, rank=rank, alpha=(2 * rank), dropout=lora_dropout)
     print_num_params(model)
 
+    # Only optimize LoRA parameters
     trainable_params = [
         param
         for name, param in model.named_parameters()
@@ -96,33 +100,34 @@ def finetune_vlm_lora(
 
     optimizer = torch.optim.AdamW(
         params=trainable_params,
-        lr=lr_lora,
-        weight_decay=weight_decay_lora,
+        lr=lr,
+        weight_decay=weight_decay,
     )
 
     scaler = GradScaler(enabled=(device.type == "cuda"))
-
-    model.train()
-    model.llama_model.train()
 
     train_losses = []
     val_losses = []
 
     best_val_loss = float("inf")
 
-    for epoch in range(num_epochs):
+    for epoch in tqdm(range(num_epochs), desc=f"Training for {num_epochs} epochs"):
+        model.train()
+        model.llama_model.train()
+
         train_loss = 0.0
         progress_bar = tqdm(train_dataloader, desc=f"Training epoch {epoch + 1}")
 
         for batch in progress_bar:
-            images = batch["images"]
-            graphviz_code = batch["graphviz_code"]
+            images, graphviz_code = batch["images"], batch["graphviz_code"]
 
             if isinstance(images, torch.Tensor):
                 images = images.to(device)  # shape: (batch_size, 3, H, W)
 
             optimizer.zero_grad()
 
+            # Inputs are token ids of full instruction + Graphviz code text
+            # Labels are token ids of just Graphviz code text
             inputs, labels = make_inputs_and_labels_vlm(
                 model=model,
                 images=images,
@@ -155,6 +160,7 @@ def finetune_vlm_lora(
                 loss=f"{loss_val:.6f}",
             )
 
+            # Save GPU VRAM during model training
             del (
                 images,
                 graphviz_code,
@@ -195,7 +201,7 @@ def finetune_vlm_lora(
             if epoch_val_loss <= best_val_loss:
                 best_val_loss = epoch_val_loss
             else:
-                print(f"Early stopping at epoch {epoch + 1}...\n")
+                print(f"Early stopping at epoch {epoch + 1}\n")
                 break
 
     return model, train_losses, val_losses
@@ -215,6 +221,7 @@ if __name__ == "__main__":
         batch_size=batch_size,
         root_dir="graphviz_rendered_json",
         image_size=(768, 768),
+        return_tensor=False,
     )
 
     model = Sketch2GraphvizVLM(
@@ -231,8 +238,8 @@ if __name__ == "__main__":
     lora_rank = 32
     lora_dropout = 0.1
 
-    lr_lora = 2e-4  # 1e-4
-    weight_decay_lora = 1e-3  # 1e-2
+    lr = 2e-4  # 1e-4
+    weight_decay = 1e-3  # 1e-2
     max_grad_norm = 1.0
 
     num_epochs = 10
@@ -244,8 +251,8 @@ if __name__ == "__main__":
         instruction=graphviz_code_from_image_instruction,
         rank=lora_rank,
         lora_dropout=lora_dropout,
-        lr_lora=lr_lora,
-        weight_decay_lora=weight_decay_lora,
+        lr=lr,
+        weight_decay=weight_decay,
         num_epochs=num_epochs,
         use_val_early_stopping=True,
         max_grad_norm=max_grad_norm,

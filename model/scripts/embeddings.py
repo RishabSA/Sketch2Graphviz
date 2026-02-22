@@ -32,6 +32,7 @@ def get_graphviz_image_embeddings(
         with autocast(
             device_type="cuda", dtype=torch.float16, enabled=(device.type == "cuda")
         ), torch.inference_mode():
+            # Get embedding vectors for images
             embedding_vectors = model.embed_images(
                 images=images
             )  # shape: (batch_size, d_model)
@@ -70,6 +71,7 @@ if __name__ == "__main__":
         batch_size=batch_size,
         root_dir="graphviz_rendered_json",
         image_size=(768, 768),
+        return_tensor=False,
     )
 
     model = Sketch2GraphvizVLM(

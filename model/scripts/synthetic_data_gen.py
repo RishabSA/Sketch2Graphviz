@@ -24,6 +24,7 @@ def generate_simple_graphviz_code(
     batch_size: int = 50,
 ) -> list[str]:
     try:
+        # Pydantic JSON-based outputs for batched Graphviz dot codes
         response = openai_client.responses.parse(
             model=model_name,
             input=[
@@ -67,26 +68,24 @@ if __name__ == "__main__":
     batch_size = 50
     system_prompt = get_synthethic_data_gen_simple_system_prompt(batch_size=batch_size)
 
+    # Use a new suffix for every batch generation to get different types of generated Graphviz DOT codes
     for i, suffix in enumerate(synthethic_data_gen_simple_prompt_suffixes):
-        for temperature in [1.0]:  # [0.25, 0.5, 1.0, 1.25]
-            generated_dot_codes = generate_simple_graphviz_code(
-                openai_client=openai_client,
-                system_prompt=system_prompt,
-                prompt_suffix=suffix,
-                model_name="gpt-5-mini",
-                temperature=temperature,
-                batch_size=batch_size,
-            )
+        generated_dot_codes = generate_simple_graphviz_code(
+            openai_client=openai_client,
+            system_prompt=system_prompt,
+            prompt_suffix=suffix,
+            model_name="gpt-5-mini",
+            temperature=1.0,
+            batch_size=batch_size,
+        )
 
-            if generated_dot_codes:
-                dot_codes.extend(generated_dot_codes)
+        if generated_dot_codes:
+            dot_codes.extend(generated_dot_codes)
 
-                with open(json_data_file_path, "w") as json_file:
-                    json.dump(dot_codes, json_file, indent=4)
+            with open(json_data_file_path, "w") as json_file:
+                json.dump(dot_codes, json_file, indent=4)
 
-                print(
-                    f"Generated {len(generated_dot_codes)} with temperature = {temperature} | suffix = {suffix}"
-                )
+            print(f"Generated {len(generated_dot_codes)} with suffix: {suffix}")
 
     print(
         f"Generated {len(dot_codes)} final DOT samples saved to {json_data_file_path}"

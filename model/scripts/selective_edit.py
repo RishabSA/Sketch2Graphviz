@@ -4,11 +4,13 @@ import logging
 
 
 def get_numbered_graphviz_code(graphviz_code: str) -> tuple[str, list[str]]:
+    # Split Graphviz code by brackets, curly braces, and semicolons
     separators = r"(?<=[{};])"
     graphviz_parts = re.split(separators, graphviz_code)
 
     cleaned_graphviz_parts = [p.replace("\n", "") for p in graphviz_parts if p.strip()]
 
+    # Number each split part of the Graphviz code for the model
     numbered_graphviz_code = "\n".join(
         [f"{i + 1}. {part}" for i, part in enumerate(cleaned_graphviz_parts)]
     )
@@ -16,27 +18,8 @@ def get_numbered_graphviz_code(graphviz_code: str) -> tuple[str, list[str]]:
     return numbered_graphviz_code, cleaned_graphviz_parts
 
 
-def apply_graphviz_edit_command(graphviz_parts: list[str], actions: list[dict]) -> str:
-    edits = [action for action in actions if action["command"] == "edit"]
-    deletes = [action for action in actions if action["command"] == "delete"]
-    adds = [action for action in actions if action["command"] == "add"]
-
-    # Edit
-    for action in edits:
-        graphviz_parts[action["idx"]] = action["content"]
-
-    # Delete in descending order
-    for action in sorted(deletes, key=lambda x: x["idx"], reverse=True):
-        del graphviz_parts[action["idx"]]
-
-    # Add in ascending order
-    for action in sorted(adds, key=lambda x: x["idx"]):
-        graphviz_parts.insert(action["idx"], action["content"])
-
-    return "\n".join(graphviz_parts)
-
-
 def extract_json_edit_plan(text: str) -> dict[str, any]:
+    # Get the JSON edit plan from a raw text response from the model
     text_stripped = text.strip()
     if text_stripped.startswith("{") and text_stripped.endswith("}"):
         return json.loads(text_stripped)
@@ -52,9 +35,9 @@ def extract_json_edit_plan(text: str) -> dict[str, any]:
         elif text[i] == "}":
             depth -= 1
             if depth == 0:
-                candidate = text[start : i + 1]
+                extracted_json = text[start : i + 1]
 
-                return json.loads(candidate)
+                return json.loads(extracted_json)
 
     raise ValueError("Could not find a complete JSON object in the response.")
 
@@ -132,6 +115,26 @@ def validate_actions(
             validated_actions.append({"command": "delete", "idx": idx - 1})
 
     return validated_actions
+
+
+def apply_graphviz_edit_command(graphviz_parts: list[str], actions: list[dict]) -> str:
+    edits = [action for action in actions if action["command"] == "edit"]
+    deletes = [action for action in actions if action["command"] == "delete"]
+    adds = [action for action in actions if action["command"] == "add"]
+
+    # Edit
+    for action in edits:
+        graphviz_parts[action["idx"]] = action["content"]
+
+    # Delete in descending order
+    for action in sorted(deletes, key=lambda x: x["idx"], reverse=True):
+        del graphviz_parts[action["idx"]]
+
+    # Add in ascending order
+    for action in sorted(adds, key=lambda x: x["idx"]):
+        graphviz_parts.insert(action["idx"], action["content"])
+
+    return "\n".join(graphviz_parts)
 
 
 def apply_llm_edit_plan(graphviz_parts: list[str], llm_response_text: str) -> str:
