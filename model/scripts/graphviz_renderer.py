@@ -2,6 +2,8 @@ import os
 from io import BytesIO
 from graphviz import Source
 from PIL import Image
+import networkx as nx
+import pydot
 
 
 def render_graphviz_dot_code(
@@ -99,6 +101,15 @@ def render_graphviz_dot_code_pil(
     return background
 
 
+def convert_graphviz_dot_to_networkx(dot_code: str) -> nx.Graph:
+    pydot_graphs = pydot.graph_from_dot_data(dot_code)
+    if not pydot_graphs:
+        raise ValueError("Could not parse DOT code into a networkx graph.")
+
+    networkx_graph = nx.nx_pydot.from_pydot(pydot_graphs[0])
+    return networkx_graph
+
+
 if __name__ == "__main__":
     dot_code = """
 digraph G26 {
@@ -117,3 +128,5 @@ digraph G26 {
         dot_code=dot_code, name="test_graph", folder="testing_outputs", size=(768, 768)
     )
     print(f"Saved graph to: {file_path}")
+
+    # networkx_graph = convert_graphviz_dot_to_networkx(dot_code=dot_code)

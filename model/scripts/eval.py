@@ -2,13 +2,20 @@ import os
 import uuid
 from dotenv import load_dotenv
 import pandas as pd
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torch.amp import autocast
 from tqdm.auto import tqdm
 from huggingface_hub import login
+from skimage.metrics import structural_similarity
+import lpips
+import networkx as nx
 
-from scripts.graphviz_renderer import render_graphviz_dot_code_pil
+from scripts.graphviz_renderer import (
+    render_graphviz_dot_code_pil,
+    convert_graphviz_dot_to_networkx,
+)
 from scripts.model import Sketch2GraphvizVLM, load_sketch2graphviz_vlm
 from scripts.psql_vector_db import get_top_k_similar_vectors_from_db
 from scripts.data import (
@@ -16,6 +23,140 @@ from scripts.data import (
     make_inputs_and_labels_vlm,
 )
 from scripts.prompts import graphviz_code_from_image_instruction
+
+
+def get_attribute_items(attributes: dict, keys: tuple) -> tuple:
+    return tuple(sorted((key, attributes[key]) for key in keys if key in attributes))
+
+
+def build_node_set(graph: nx.Graph) -> set[str]:
+    return {node_id for node_id in graph.nodes()}
+
+
+def build_edge_set(graph: nx.Graph) -> set[tuple[str, str]]:
+    return {
+        (edge[0], edge[1]) if graph.is_directed() else tuple(sorted((edge[0], edge[1])))
+        for edge in graph.edges()
+    }
+
+
+def build_node_attribute_set(
+    graph: nx.Graph,
+    attribute_keys: tuple,
+) -> set[tuple[str, tuple]]:
+    return {
+        (node_id, get_attribute_items(attributes, attribute_keys))
+        for node_id, attributes in graph.nodes(data=True)
+    }
+
+
+def build_edge_attribute_set(
+    graph: nx.Graph,
+    attribute_keys: tuple,
+) -> set[tuple[str, str, tuple]]:
+    is_directed = graph.is_directed()
+    edge_attribute_set = set()
+
+    if graph.is_multigraph():
+        for u, v, _, attributes in graph.edges(keys=True, data=True):
+            if is_directed:
+                u_key, v_key = u, v
+            else:
+                u_key, v_key = sorted((u, v))
+
+            edge_attribute_set.add(
+                (u_key, v_key, get_attribute_items(attributes, attribute_keys))
+            )
+    else:
+        for u, v, attributes in graph.edges(data=True):
+            if is_directed:
+                u_key, v_key = u, v
+            else:
+                u_key, v_key = sorted((u, v))
+
+            edge_attribute_set.add(
+                (u_key, v_key, get_attribute_items(attributes, attribute_keys))
+            )
+
+    return edge_attribute_set
+
+
+def compute_precision_recall_f1(
+    predicted_set: set,
+    ground_truth_set: set,
+) -> dict[str, float]:
+    true_positive = len(predicted_set & ground_truth_set)
+    false_positive = len(predicted_set - ground_truth_set)
+    false_negative = len(ground_truth_set - predicted_set)
+
+    precision = true_positive / (true_positive + false_positive)
+    recall = true_positive / (true_positive + false_negative)
+    f1 = 2 * precision * recall / (precision + recall)
+
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+    }
+
+
+def compute_networkx_graph_f1_metrics(
+    original_graph: nx.Graph,
+    generated_graph: nx.Graph,
+    node_attribute_keys: tuple = ("label", "shape", "style", "fillcolor", "color"),
+    edge_attribute_keys: tuple = (
+        "label",
+        "style",
+        "color",
+        "dir",
+        "arrowhead",
+        "arrowtail",
+        "weight",
+        "penwidth",
+    ),
+) -> dict[str, float]:
+    original_node_set = build_node_set(original_graph)
+    generated_node_set = build_node_set(generated_graph)
+    node_metrics = compute_precision_recall_f1(generated_node_set, original_node_set)
+
+    original_edge_set = build_edge_set(original_graph)
+    generated_edge_set = build_edge_set(generated_graph)
+    edge_metrics = compute_precision_recall_f1(generated_edge_set, original_edge_set)
+
+    original_node_attribute_set = build_node_attribute_set(
+        original_graph, node_attribute_keys
+    )
+    generated_node_attribute_set = build_node_attribute_set(
+        generated_graph, node_attribute_keys
+    )
+    node_attribute_metrics = compute_precision_recall_f1(
+        generated_node_attribute_set, original_node_attribute_set
+    )
+
+    original_edge_attribute_set = build_edge_attribute_set(
+        original_graph, edge_attribute_keys
+    )
+    generated_edge_attribute_set = build_edge_attribute_set(
+        generated_graph, edge_attribute_keys
+    )
+    edge_attribute_metrics = compute_precision_recall_f1(
+        generated_edge_attribute_set, original_edge_attribute_set
+    )
+
+    return {
+        "node_precision": node_metrics["precision"],
+        "node_recall": node_metrics["recall"],
+        "node_f1": node_metrics["f1"],
+        "edge_precision": edge_metrics["precision"],
+        "edge_recall": edge_metrics["recall"],
+        "edge_f1": edge_metrics["f1"],
+        "node_attribute_precision": node_attribute_metrics["precision"],
+        "node_attribute_recall": node_attribute_metrics["recall"],
+        "node_attribute_f1": node_attribute_metrics["f1"],
+        "edge_attribute_precision": edge_attribute_metrics["precision"],
+        "edge_attribute_recall": edge_attribute_metrics["recall"],
+        "edge_attribute_f1": edge_attribute_metrics["f1"],
+    }
 
 
 def evaluate_vlm(
@@ -76,7 +217,7 @@ def evaluate_vlm(
             loss_val,
         )
 
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
 
     return test_loss / len(iterator)
 
@@ -195,7 +336,6 @@ Output ONLY valid DOT code, starting with 'digraph' or 'graph', with no explanat
 def evaluate_vlm_outputs(
     description: str = "Evaluating Outputs",
     outputs_load_path: str = "testing_outputs.jsonl",
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> dict:
     # Load the model outputs
     outputs_df = pd.read_json(outputs_load_path, lines=True)
@@ -203,15 +343,146 @@ def evaluate_vlm_outputs(
 
     progress_bar = tqdm(model_outputs, desc=description)
 
+    render_success = 0
+    render_fail = 0
+
+    ssim_scores = []
+    lpips_distances = []
+    networkx_isomorphisms = []
+
+    node_f1_scores = []
+    edge_f1_scores = []
+    node_attribute_f1_scores = []
+    edge_attribute_f1_scores = []
+
+    lpips_loss_fn = lpips.LPIPS(net="alex").eval()
+
     for item in progress_bar:
         original_graphviz_code, generated_graphviz_code = (
             item["original_graphviz_code"],
             item["generated_graphviz_code"],
         )
 
+        try:
+            original_graph = render_graphviz_dot_code_pil(original_graphviz_code)
+            generated_graph = render_graphviz_dot_code_pil(generated_graphviz_code)
+
+            render_success += 1
+        except Exception:
+            render_fail += 1
+            progress_bar.set_postfix(render_fail=render_fail)
+            continue
+
+        original_graph_np = np.asarray(original_graph, dtype=np.uint8)
+        generated_graph_np = np.asarray(generated_graph, dtype=np.uint8)
+
+        # Learned Perceptual Image Patch Similarity (LPIPS)
+
+        # Normalize graph imgages to [-1, 1]
+        original_lpips_tensor = (
+            torch.from_numpy(original_graph_np)
+            .permute(2, 0, 1)
+            .unsqueeze(dim=0)
+            .float()
+            / (255.0 / 2)
+            - 1.0
+        )
+        generated_lpips_tensor = (
+            torch.from_numpy(generated_graph_np)
+            .permute(2, 0, 1)
+            .unsqueeze(dim=0)
+            .float()
+            / (255.0 / 2)
+            - 1.0
+        )
+
+        lpips_distance = lpips_loss_fn(original_lpips_tensor, generated_lpips_tensor)
+        lpips_distances.append(lpips_distance.item())
+
+        # Structural Similarity Index (SSIM)
+        ssim_score = structural_similarity(
+            original_graph_np,
+            generated_graph_np,
+            channel_axis=-1,
+            data_range=255,
+        )
+        ssim_scores.append(float(ssim_score))
+
+        # Graph comparisions with Networkx
+        try:
+            original_networkx_graph = convert_graphviz_dot_to_networkx(
+                original_graphviz_code
+            )
+            generated_networkx_graph = convert_graphviz_dot_to_networkx(
+                generated_graphviz_code
+            )
+
+            networkx_graph_isomorphism = nx.is_isomorphic(
+                original_networkx_graph, generated_networkx_graph
+            )
+            networkx_isomorphisms.append(int(networkx_graph_isomorphism))
+
+            graph_f1_metrics = compute_networkx_graph_f1_metrics(
+                original_graph=original_networkx_graph,
+                generated_graph=generated_networkx_graph,
+            )
+
+            node_f1_scores.append(graph_f1_metrics["node_f1"])
+            edge_f1_scores.append(graph_f1_metrics["edge_f1"])
+            node_attribute_f1_scores.append(graph_f1_metrics["node_attribute_f1"])
+            edge_attribute_f1_scores.append(graph_f1_metrics["edge_attribute_f1"])
+        except Exception:
+            networkx_isomorphisms.append(0)
+            node_f1_scores.append(0.0)
+            edge_f1_scores.append(0.0)
+            node_attribute_f1_scores.append(0.0)
+            edge_attribute_f1_scores.append(0.0)
+
+        progress_bar.set_postfix(
+            ssim=(sum(ssim_scores) / len(ssim_scores)),
+            lpips=(sum(lpips_distances) / len(lpips_distances)),
+            isomorphism=(sum(networkx_isomorphisms) / len(networkx_isomorphisms)),
+            node_f1=(sum(node_f1_scores) / len(node_f1_scores)),
+            edge_f1=(sum(edge_f1_scores) / len(edge_f1_scores)),
+            render_fail=render_fail,
+        )
+
     print(f"Evaluated {len(model_outputs)} model generations")
 
-    return {}
+    mean_ssim = float(sum(ssim_scores) / len(ssim_scores))
+    mean_lpips = float(sum(lpips_distances) / len(lpips_distances))
+    mean_isomorphism = float(sum(networkx_isomorphisms) / len(networkx_isomorphisms))
+
+    mean_node_f1 = float(sum(node_f1_scores) / len(node_f1_scores))
+    mean_edge_f1 = float(sum(edge_f1_scores) / len(edge_f1_scores))
+    mean_node_attribute_f1 = float(
+        sum(node_attribute_f1_scores) / len(node_attribute_f1_scores)
+    )
+    mean_edge_attribute_f1 = float(
+        sum(edge_attribute_f1_scores) / len(edge_attribute_f1_scores)
+    )
+
+    render_success_rate = float(render_success / len(model_outputs))
+
+    return {
+        "render_success": render_success,
+        "render_fail": render_fail,
+        "render_success_rate": render_success_rate,
+        "mean_ssim": mean_ssim,
+        "mean_lpips": mean_lpips,
+        "mean_isomorphism": mean_isomorphism,
+        "mean_node_f1": mean_node_f1,
+        "mean_edge_f1": mean_edge_f1,
+        "mean_node_attribute_f1": mean_node_attribute_f1,
+        "mean_edge_attribute_f1": mean_edge_attribute_f1,
+        "ssim_scores": ssim_scores,
+        "lpips_distances": lpips_distances,
+        "networkx_isomorphisms": networkx_isomorphisms,
+        "node_f1_scores": node_f1_scores,
+        "edge_f1_scores": edge_f1_scores,
+        "node_attribute_f1_scores": node_attribute_f1_scores,
+        "edge_attribute_f1_scores": edge_attribute_f1_scores,
+    }
 
 
 if __name__ == "__main__":

@@ -48,7 +48,7 @@ def get_graphviz_image_embeddings(
             embedding_vectors,
         )
 
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
 
     print(
         f"Collected {len(all_codes_and_embedding_vectors)} Graphviz code and embedding vector pairs"

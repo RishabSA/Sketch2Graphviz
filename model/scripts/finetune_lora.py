@@ -11,6 +11,7 @@ from peft import (
     TaskType,
     PeftModel,
 )
+from transformers import get_scheduler
 from huggingface_hub import login
 
 from scripts.model import (
@@ -80,8 +81,10 @@ def finetune_vlm_lora(
     lora_dropout: float = 0.1,
     lr: float = 2e-4,
     weight_decay: float = 0.0,
+    warmup_ratio: float = 0.1,
     num_epochs: int = 10,
     use_val_early_stopping: bool = True,
+    early_stopping_patience: int = 2,
     max_grad_norm: float = 1.0,
     model_save_dir: str = "checkpoints",
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
@@ -104,12 +107,23 @@ def finetune_vlm_lora(
         weight_decay=weight_decay,
     )
 
+    total_training_steps = num_epochs * len(train_dataloader)
+    warmup_steps = int(total_training_steps * warmup_ratio)
+
+    scheduler = get_scheduler(
+        name="cosine",
+        optimizer=optimizer,
+        num_warmup_steps=warmup_steps,
+        num_training_steps=total_training_steps,
+    )
+
     scaler = GradScaler(enabled=(device.type == "cuda"))
 
     train_losses = []
     val_losses = []
 
     best_val_loss = float("inf")
+    no_improvement_count = 0
 
     for epoch in tqdm(range(num_epochs), desc=f"Training for {num_epochs} epochs"):
         model.train()
@@ -152,12 +166,14 @@ def finetune_vlm_lora(
 
             scaler.step(optimizer)
             scaler.update()
+            scheduler.step()
 
             loss_val = loss.item()
             train_loss += loss_val
 
             progress_bar.set_postfix(
                 loss=f"{loss_val:.6f}",
+                lr=f"{scheduler.get_last_lr()[0]:.2e}",
             )
 
             # Save GPU VRAM during model training
@@ -171,7 +187,7 @@ def finetune_vlm_lora(
                 loss_val,
             )
 
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
 
         os.makedirs(model_save_dir, exist_ok=True)
 
@@ -194,15 +210,19 @@ def finetune_vlm_lora(
         val_losses.append(epoch_val_loss)
 
         print(
-            f"Epoch {epoch + 1} | Train loss: {epoch_train_loss:.6f} | Val loss: {epoch_val_loss:.6f}"
+            f"Epoch {epoch + 1} | Train loss: {epoch_train_loss:.6f} | Val loss: {epoch_val_loss:.6f} | LR: {scheduler.get_last_lr()[0]:.2e}"
         )
 
         if use_val_early_stopping:
             if epoch_val_loss <= best_val_loss:
                 best_val_loss = epoch_val_loss
+                no_improvement_count = 0
             else:
-                print(f"Early stopping at epoch {epoch + 1}\n")
-                break
+                no_improvement_count += 1
+
+                if no_improvement_count >= early_stopping_patience:
+                    print(f"Early stopping at epoch {epoch + 1}\n")
+                    break
 
     return model, train_losses, val_losses
 
@@ -238,8 +258,10 @@ if __name__ == "__main__":
     lora_rank = 32
     lora_dropout = 0.1
 
-    lr = 2e-4  # 1e-4
-    weight_decay = 1e-3  # 1e-2
+    lr = 1e-4  # 2e-4
+    weight_decay = 1e-2  # 1e-3
+    warmup_ratio = 0.1
+    early_stopping_patience = 2
     max_grad_norm = 1.0
 
     num_epochs = 10
@@ -253,8 +275,10 @@ if __name__ == "__main__":
         lora_dropout=lora_dropout,
         lr=lr,
         weight_decay=weight_decay,
+        warmup_ratio=warmup_ratio,
         num_epochs=num_epochs,
         use_val_early_stopping=True,
+        early_stopping_patience=early_stopping_patience,
         max_grad_norm=max_grad_norm,
         model_save_dir="checkpoints",
         device=device,
