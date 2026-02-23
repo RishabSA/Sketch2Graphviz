@@ -1,4 +1,5 @@
 import os
+import math
 from dotenv import load_dotenv
 import torch
 from torch.utils.data import DataLoader
@@ -79,6 +80,7 @@ def finetune_vlm_lora(
     instruction: str,
     rank: int = 32,
     lora_dropout: float = 0.1,
+    grad_accumulation_steps: int = 1,
     lr: float = 2e-4,
     weight_decay: float = 0.0,
     warmup_ratio: float = 0.1,
@@ -107,7 +109,8 @@ def finetune_vlm_lora(
         weight_decay=weight_decay,
     )
 
-    total_training_steps = num_epochs * len(train_dataloader)
+    num_updates_per_epoch = math.ceil(len(train_dataloader) / grad_accumulation_steps)
+    total_training_steps = num_epochs * num_updates_per_epoch
     warmup_steps = int(total_training_steps * warmup_ratio)
 
     scheduler = get_scheduler(
@@ -132,13 +135,13 @@ def finetune_vlm_lora(
         train_loss = 0.0
         progress_bar = tqdm(train_dataloader, desc=f"Training epoch {epoch + 1}")
 
-        for batch in progress_bar:
+        optimizer.zero_grad()
+
+        for step, batch in enumerate(progress_bar, start=1):
             images, graphviz_code = batch["images"], batch["graphviz_code"]
 
             if isinstance(images, torch.Tensor):
                 images = images.to(device)  # shape: (batch_size, 3, H, W)
-
-            optimizer.zero_grad()
 
             # Inputs are token ids of full instruction + Graphviz code text
             # Labels are token ids of just Graphviz code text
@@ -159,17 +162,24 @@ def finetune_vlm_lora(
 
                 loss = outputs.loss
 
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-
-            torch.nn.utils.clip_grad_norm_(trainable_params, max_grad_norm)
-
-            scaler.step(optimizer)
-            scaler.update()
-            scheduler.step()
-
             loss_val = loss.item()
             train_loss += loss_val
+
+            # Keep effective accumulate gradients equivalent to the larger effective batch size
+            loss = loss / grad_accumulation_steps
+            scaler.scale(loss).backward()
+
+            # After the specific gradient accumulation steps or at the end of the dataloader, update weights and zero gradeitns for gradient accumulation
+            # Effective batch size = batch_size * grad_accumulation_steps
+            if (step % grad_accumulation_steps == 0) or (step == len(train_dataloader)):
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(trainable_params, max_grad_norm)
+
+                scaler.step(optimizer)
+                scaler.update()
+                scheduler.step()
+
+                optimizer.zero_grad()
 
             progress_bar.set_postfix(
                 loss=f"{loss_val:.6f}",
@@ -257,6 +267,7 @@ if __name__ == "__main__":
 
     lora_rank = 32
     lora_dropout = 0.1
+    grad_accumulation_steps = 16
 
     lr = 1e-4  # 2e-4
     weight_decay = 1e-2  # 1e-3
@@ -273,6 +284,7 @@ if __name__ == "__main__":
         instruction=graphviz_code_from_image_instruction,
         rank=lora_rank,
         lora_dropout=lora_dropout,
+        grad_accumulation_steps=grad_accumulation_steps,
         lr=lr,
         weight_decay=weight_decay,
         warmup_ratio=warmup_ratio,
