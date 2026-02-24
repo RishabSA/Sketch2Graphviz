@@ -15,14 +15,8 @@ from peft import (
 from transformers import get_scheduler
 from huggingface_hub import login
 
-from scripts.model import (
-    Sketch2GraphvizVLM,
-    print_num_params,
-)
-from scripts.data import (
-    get_json_graphviz_json_dataloaders,
-    make_inputs_and_labels_vlm,
-)
+from scripts.model import Sketch2GraphvizVLM, print_num_params
+from scripts.data import get_json_graphviz_json_dataloaders, make_inputs_and_labels_vlm
 from scripts.eval import evaluate_vlm
 from scripts.prompts import graphviz_code_from_image_instruction
 
@@ -247,7 +241,7 @@ if __name__ == "__main__":
     batch_size = 1
 
     train_dataloader, test_dataloader = get_json_graphviz_json_dataloaders(
-        json_path="simple_synthetic_data_gen.json",
+        json_path="synthetic_data_gen.json",
         batch_size=batch_size,
         root_dir="graphviz_rendered_json",
         image_size=(768, 768),
@@ -267,6 +261,8 @@ if __name__ == "__main__":
 
     lora_rank = 32
     lora_dropout = 0.1
+
+    # Effective batch size = batch_size * grad_accumulation_steps = 16
     grad_accumulation_steps = 16
 
     lr = 1e-4  # 2e-4

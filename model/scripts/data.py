@@ -1,4 +1,5 @@
 import os
+import random
 import json
 import time
 from typing import Callable
@@ -7,10 +8,117 @@ from tqdm.auto import tqdm
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
+import torch.nn.functional as F
 from datasets import Dataset as HFDataset
 
 from scripts.graphviz_renderer import render_graphviz_dot_code
 from scripts.model import Sketch2GraphvizVLM
+
+
+class HandDrawnWhiteBoardTransform:
+    def __init__(
+        self,
+        p: float = 1.0,
+        edge_threshold: tuple[float, float] = (0.005, 0.015),
+        line_strength: tuple[float, float] = (1.25, 1.75),
+    ):
+        self.p = p
+        self.edge_threshold = edge_threshold
+        self.line_strength = line_strength
+
+        transform = [
+            transforms.RandomApply(
+                [transforms.GaussianBlur(kernel_size=3, sigma=(0.2, 0.7))], p=1.0
+            ),
+            transforms.RandomApply(
+                [transforms.ColorJitter(brightness=(1.0, 1.25), contrast=(0.75, 0.95))],
+                p=1.0,
+            ),
+            transforms.RandomAutocontrast(p=0.9),
+            transforms.RandomAdjustSharpness(sharpness_factor=2.0, p=0.75),
+            transforms.RandomAffine(
+                degrees=0,
+                translate=(0.01, 0.01),
+                scale=(0.995, 1.005),
+                fill=(255, 255, 255),
+            ),
+            transforms.ToTensor(),
+            transforms.Lambda(self.overlay_marker_edges),
+            transforms.Lambda(self.add_grain),
+            transforms.ToPILImage(),
+            transforms.RandomApply(
+                [transforms.GaussianBlur(kernel_size=3, sigma=(0.05, 0.2))], p=0.5
+            ),
+        ]
+
+        self.pipeline = transforms.Compose(transform)
+
+    @staticmethod
+    def soft_edge_map(gray: torch.Tensor) -> torch.Tensor:
+        # gray shape: (1, H, W)
+
+        sobel_convolution_x = torch.tensor(
+            [
+                [
+                    [-1.0, 0.0, 1.0],
+                    [-2.0, 0.0, 2.0],
+                    [-1.0, 0.0, 1.0],
+                ]
+            ],
+            dtype=gray.dtype,
+            device=gray.device,
+        ).unsqueeze(dim=0)
+
+        sobel_convolution_y = torch.tensor(
+            [
+                [
+                    [-1.0, -2.0, -1.0],
+                    [0.0, 0.0, 0.0],
+                    [1.0, 2.0, 1.0],
+                ]
+            ],
+            dtype=gray.dtype,
+            device=gray.device,
+        ).unsqueeze(dim=0)
+
+        image_gradient_x = F.conv2d(
+            gray.unsqueeze(dim=0), sobel_convolution_x, padding=1
+        )
+        image_gradient_y = F.conv2d(
+            gray.unsqueeze(dim=0), sobel_convolution_y, padding=1
+        )
+
+        mag = torch.sqrt(image_gradient_x**2 + image_gradient_y**2).squeeze(
+            dim=0
+        )  # shape: (1, H, W)
+
+        return mag / mag.max()
+
+    def overlay_marker_edges(self, tensor_img: torch.Tensor) -> torch.Tensor:
+        gray = transforms.functional.rgb_to_grayscale(tensor_img, num_output_channels=1)
+        edges = self.soft_edge_map(gray)
+
+        threshold = random.uniform(self.edge_threshold[0], self.edge_threshold[1])
+        strength = random.uniform(self.line_strength[0], self.line_strength[1])
+
+        alpha = (
+            torch.clamp((edges - threshold) / (1.0 - threshold), 0.0, 1.0) * strength
+        )
+        alpha = torch.clamp(alpha, 0.0, 1.0)
+
+        out = tensor_img * (1.0 - alpha)
+
+        return torch.clamp(out, 0.0, 1.0)
+
+    @staticmethod
+    def add_grain(tensor_img: torch.Tensor) -> torch.Tensor:
+        sigma = random.uniform(0.01, 0.02)
+        noise = torch.randn_like(tensor_img) * sigma
+
+        return torch.clamp(tensor_img + noise, 0.0, 1.0)
+
+    def __call__(self, image: Image.Image) -> Image.Image:
+        return self.pipeline(image.convert("RGB"))
 
 
 class GraphvizImageCodeDataset(Dataset):
@@ -97,11 +205,12 @@ class GraphvizImageCodeDataset(Dataset):
 
 
 def get_json_graphviz_json_dataloaders(
-    json_path: str = "simple_synthetic_data_gen.json",
+    json_path: str = "synthetic_data_gen.json",
     batch_size: int = 4,
     root_dir: str = "graphviz_rendered_json",
     image_size: tuple[int, int] = (768, 768),
     return_tensor: bool = False,
+    handdrawn_probability: float = 0.30,
 ) -> tuple[DataLoader, DataLoader]:
     start_time = time.time()
 
@@ -115,8 +224,7 @@ def get_json_graphviz_json_dataloaders(
     hf_dataset_split = hf_dataset.train_test_split(test_size=0.1, seed=42)
     train_split, test_split = hf_dataset_split["train"], hf_dataset_split["test"]
 
-    # Image Transforms for training
-    train_transform = transforms.Compose(
+    standard_transform = transforms.Compose(
         [
             transforms.RandomApply(
                 [
@@ -138,10 +246,23 @@ def get_json_graphviz_json_dataloaders(
                 p=0.1,
             ),
         ]
-        + ([transforms.ToTensor()] if return_tensor else [])
     )
 
-    test_transform = transforms.ToTensor() if return_tensor else None
+    handdrawn_transform = HandDrawnWhiteBoardTransform(
+        p=1.0,
+        edge_threshold=(0.005, 0.015),
+        line_strength=(1.25, 1.75),
+    )
+
+    transform = transforms.Compose(
+        [
+            transforms.RandomChoice(
+                transforms=[handdrawn_transform, standard_transform],
+                p=[handdrawn_probability, 1.0 - handdrawn_probability],
+            )
+        ]
+        + ([transforms.ToTensor()] if return_tensor else [])
+    )
 
     # Construct train and test datasets with rendered and saved Graphviz iamges
     train_dataset = GraphvizImageCodeDataset(
@@ -149,7 +270,7 @@ def get_json_graphviz_json_dataloaders(
         split_name="train",
         root_dir=root_dir,
         image_size=image_size,
-        transform=train_transform,
+        transform=transform,
     )
 
     test_dataset = GraphvizImageCodeDataset(
@@ -157,7 +278,7 @@ def get_json_graphviz_json_dataloaders(
         split_name="test",
         root_dir=root_dir,
         image_size=image_size,
-        transform=test_transform,
+        transform=transform,
     )
 
     def collate_fn(batch: list[dict]) -> dict:
@@ -256,7 +377,7 @@ if __name__ == "__main__":
     batch_size = 1
 
     train_dataloader, test_dataloader = get_json_graphviz_json_dataloaders(
-        json_path="simple_synthetic_data_gen.json",
+        json_path="synthetic_data_gen.json",
         batch_size=batch_size,
         root_dir="graphviz_rendered_json",
         image_size=(768, 768),

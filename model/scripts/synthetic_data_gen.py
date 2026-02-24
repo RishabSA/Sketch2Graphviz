@@ -5,9 +5,11 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-from scripts.prompts import (
+from prompts import (
     get_synthethic_data_gen_simple_system_prompt,
+    get_synthethic_data_gen_complex_system_prompt,
     synthethic_data_gen_simple_prompt_suffixes,
+    synthethic_data_gen_complex_prompt_suffixes,
 )
 
 
@@ -15,7 +17,7 @@ class GraphvizData(BaseModel):
     dot_codes: list[str]
 
 
-def generate_simple_graphviz_code(
+def generate_graphviz_code(
     openai_client: OpenAI,
     system_prompt: str,
     prompt_suffix: str,
@@ -34,7 +36,7 @@ def generate_simple_graphviz_code(
                 },
                 {
                     "role": "user",
-                    "content": f"Can you generate {batch_size} simple Graphviz code samples to be used as labeled data to help train an AI agent to learn how Graphviz works?\n"
+                    "content": f"Can you generate {batch_size} Graphviz code samples to be used as labeled data to help train an AI agent to learn how Graphviz works?\n"
                     + prompt_suffix,
                 },
             ],
@@ -55,7 +57,10 @@ if __name__ == "__main__":
     openai_api_key = os.getenv("OPENAI_API_KEY")
 
     dot_codes = []
-    json_data_file_path = "data/simple_synthetic_data_gen.json"
+
+    # json_data_file_path = "data/simple_synthetic_data_gen.json"
+    json_data_file_path = "data/complex_synthetic_data_gen.json"
+
     os.makedirs(os.path.dirname(json_data_file_path), exist_ok=True)
 
     try:
@@ -66,11 +71,16 @@ if __name__ == "__main__":
         sys.exit(1)
 
     batch_size = 50
-    system_prompt = get_synthethic_data_gen_simple_system_prompt(batch_size=batch_size)
+
+    # system_prompt = get_synthethic_data_gen_simple_system_prompt(batch_size=batch_size)
+    system_prompt = get_synthethic_data_gen_complex_system_prompt(batch_size=batch_size)
+
+    # prompt_suffixes = synthethic_data_gen_simple_prompt_suffixes
+    prompt_suffixes = synthethic_data_gen_complex_prompt_suffixes
 
     # Use a new suffix for every batch generation to get different types of generated Graphviz DOT codes
-    for i, suffix in enumerate(synthethic_data_gen_simple_prompt_suffixes):
-        generated_dot_codes = generate_simple_graphviz_code(
+    for i, suffix in enumerate(prompt_suffixes):
+        generated_dot_codes = generate_graphviz_code(
             openai_client=openai_client,
             system_prompt=system_prompt,
             prompt_suffix=suffix,

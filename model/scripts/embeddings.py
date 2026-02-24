@@ -67,7 +67,7 @@ if __name__ == "__main__":
     batch_size = 1
 
     train_dataloader, test_dataloader = get_json_graphviz_json_dataloaders(
-        json_path="simple_synthetic_data_gen.json",
+        json_path="synthetic_data_gen.json",
         batch_size=batch_size,
         root_dir="graphviz_rendered_json",
         image_size=(768, 768),

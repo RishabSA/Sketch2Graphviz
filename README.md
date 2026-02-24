@@ -74,19 +74,21 @@ The Sketch2Graphviz web application allows you to sketch a graph or flowchart wi
 
 ## Implementation Details
 
+### Generating Synthethic Data
+
+Because there are no publicly available Graphviz datasets that provide DOT code of sufficient quality, I synthesized my own data by generating several Graphviz DOT code samples using the OpenAI API and the `gpt-5-mini` model. Specific types of graphs are generated with prompt suffixes that specify different types of nodes, edges, and attributes for all graphs generated in a batch.
+
 ### Model and Low-Rank Adaptation (LoRA) Fine-Tuning
 
-The Sketch2Graphviz Vision-Language model (VLM) uses the 11 billion parameter `meta-llama/Llama-3.2-11B-Vision-Instruct` as a base model. The base model was fine-tuned with LoRA adapters on the linear layers in both the image encoder and text decoder. The model was loaded with **16-bit quantization** for LoRA fine-tuning and **4-bit quantization** for inferencing and deployment on the FastAPI server to reduce VRAM usage and deployment costs, with no noticeable impact on results
-
-The model was fine-tuned with an A100 SXM GPU with 80 GB VRAM on Google Colab from a Jupyter notebook.
+The Sketch2Graphviz Vision-Language model (VLM) uses the 11 billion parameter `meta-llama/Llama-3.2-11B-Vision-Instruct` as a base model. The base model was fine-tuned with LoRA adapters on the linear layers in both the image encoder and text decoder. The model was loaded with **16-bit quantization** for LoRA fine-tuning and **4-bit quantization** for inferencing and deployment on the FastAPI server to reduce VRAM usage and deployment costs, with no noticeable impact on results.
 
 ### Retrieval-Augmented Generation (RAG) and Vector Database
 
-Images are passed through the VLM with a constant prompt. The prompt and image data are passed through the VLM (image is passed through the image encoder) to get the hidden state output of the model. The hidden state is averaged over all token positions to get a single embedding vector representation of size `d_model` for the image. This is then L2 normalized to get a final image embedding vector.
+Retrieval-Augmented Generation (RAG) was used to improve the quality of DOT code generations produced. First, images in the training dataset are passed through the VLM with a constant prompt. The prompt and image data are passed through the VLM (image is passed through the image encoder) to get the hidden state output of the model. The hidden state is averaged over all token positions to get a single embedding vector representation of size `d_model` for the image. This is then L2 normalized to get a final image embedding vector.
 
-PostgreSQL and PGVector were used to store Graphviz code and embedding pairs for retrieval at inference-time. The top-K most similar Graphviz codes are retrived by a similarity search by Euclidean L2 vector distance between the provided embedding at inference-time and those stored in the vector DB. The top-K most similar Graphviz codes corresponding to the most similar embeddings were then provided as context to the Sketch2Graphviz model for full generation as few-shot prompting.
+PostgreSQL and PGVector were used to store Graphviz code and embedding pairs for retrieval at inference-time. The top-K most similar Graphviz codes are retrived by a similarity search by Euclidean L2 vector distance between the provided embedding at inference-time and those stored in the vector DB. The top-K most similar Graphviz codes corresponding to the most similar embeddings were then provided as context to the Sketch2Graphviz model for full generation as few-shot prompting by adding them to the prompt passed to the model.
 
-Utilizing Retrieval-Augmented Generation (RAG) through the vector similarity search significantly improved the quality of results through few-shot prompting, leading to noticable differences in the alignment of the target and generated Graphviz codes.
+Utilizing RAG through the vector similarity search significantly improved the quality of results through few-shot prompting, leading to noticable differences in the alignment of the target and generated Graphviz codes.
 
 ### Editing Generated Graphviz DOT Code
 

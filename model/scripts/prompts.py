@@ -215,6 +215,121 @@ synthethic_data_gen_simple_prompt_suffixes = [
     "Focus on queue management: use 'shape=record' nodes to represent 'Message Queues' and show edges entering (Producer) and leaving (Consumer) the structure.",
 ]
 
+synthethic_data_gen_complex_prompt_suffixes = [
+    "",
+    # Macro architecture and scale
+    "Focus on large-scale structure: build directed graphs with 9-18 nodes and 15-45 edges, with at least one backbone path plus multiple side branches.",
+    "Focus on multi-stage pipelines: use 4-7 sequential stages with fan-out and fan-in between stages, including at least 3 labeled cross-stage edges.",
+    "Focus on hub-and-spoke complexity: include 2-3 hubs (high-degree nodes) that each connect to separate subsystems, plus bridge edges between hubs.",
+    "Focus on deep dependency chains: create long chains of 6-10 nodes with additional skip connections and at least one feedback edge.",
+    "Focus on partial mesh behavior: generate 2 dense local neighborhoods connected by sparse gateway links, avoiding fully complete graphs.",
+    # Styling / color / visual hierarchy at larger scale
+    "Focus on scalable styling: use high-contrast named colors, varied edge styles, and penwidths from 1.0 to 6.0 to separate primary and secondary flows.",
+    "Focus on semantic color channels: assign consistent edge colors by relation type (control/data/error), and keep node color themes consistent within subsystems.",
+    "Focus on layered emphasis: use thick/high-weight edges for main routes, thin/dashed edges for optional or async routes, and clear arrowhead variety.",
+    "Focus on large-graph readability: combine font size variation, fillcolor contrast, and selective bold labels to preserve legibility in dense diagrams.",
+    "Focus on style heterogeneity: mix filled, rounded, bold, and dotted styles across node groups while keeping each group internally coherent.",
+    # Layout / rank / direction
+    "Focus on multi-rank orchestration: explicitly set rankdir and enforce several rank=same groups so 9+ nodes align into clear tiers.",
+    "Focus on rank-crossing pressure: include many long-range edges that bypass intermediate ranks while preserving an identifiable primary direction.",
+    "Focus on dense but controlled spacing: tune nodesep and ranksep to produce compact layouts that remain decipherable at 15+ edges.",
+    "Focus on bidirectional layers: create mostly left-to-right flow with selective reverse-direction edges representing acknowledgements or retries.",
+    "Focus on structural asymmetry: build uneven branches (some shallow, some deep) so the graph is not a simple balanced tree.",
+    # Clusters / subgraphs / hierarchy
+    "Focus on multi-cluster architecture: include 3-5 clusters with labels, distinct background colors, and cross-cluster communication edges.",
+    "Focus on nested cluster systems: place at least one cluster inside a parent cluster, with edges entering and leaving both levels.",
+    "Focus on role-based partitions: separate nodes into clusters such as ingest, processing, storage, and serving, then connect them with labeled flows.",
+    "Focus on cluster gateway nodes: each cluster should expose one gateway node used for most inter-cluster connections, plus a few direct exceptions.",
+    "Focus on mixed grouping semantics: combine visual clusters with non-visual subgraphs (rank-only groupings) in the same diagram.",
+    # HTML labels / records / ports
+    "Focus on rich tabular nodes: include several HTML-like table labels with 2-4 rows/columns and internal borders for complex entities.",
+    "Focus on port-level routing: use PORT attributes in HTML labels and connect edges between specific ports across multiple nodes.",
+    "Focus on record-heavy schemas: use shape=record for multiple nodes with many fields and targeted port-to-port relationships.",
+    "Focus on hybrid labels at scale: mix plain labels, multiline labels, and HTML labels across a 10+ node graph.",
+    "Focus on metadata-rich nodes: include nodes that display structured details (status, owner, version) via HTML-like formatting.",
+    # Node types / shapes
+    "Focus on shape-driven semantics: use different shape families to represent services, stores, decisions, users, and external systems.",
+    "Focus on terminal and decision markers: include explicit start/end/decision nodes using doublecircle, Msquare, Mdiamond, and diamond.",
+    "Focus on multi-periphery emphasis: use peripheries=2 or peripheries=3 on critical nodes to indicate priority or criticality.",
+    "Focus on heterogeneous components: combine circles/boxes/cylinders/records/components while keeping each shape meaning consistent.",
+    "Focus on dense topology with clear roles: ensure high node-count diagrams still make role distinctions obvious through shape and label design.",
+    # Edge semantics / advanced attributes
+    "Focus on pervasive edge labeling: label most edges with short semantic phrases or numeric values, especially on cross-cluster links.",
+    "Focus on control vs data paths: separate control, data, and error edges through style/color conventions and maintain consistency throughout.",
+    "Focus on parallel relationships: include multiple edges between the same node pairs with distinct labels, styles, and priorities.",
+    "Focus on explicit routing control: use minlen, weight, constraint=false, and occasional style=invis edges to shape dense layouts.",
+    "Focus on directional ports: use headport and tailport (n, s, e, w) frequently to enforce edge entry/exit direction on crowded nodes.",
+    # Directed / undirected / mixed regimes
+    "Focus on directed complexity: create large digraphs with cycles, branches, and convergences while preserving a dominant flow orientation.",
+    "Focus on undirected dense components: build graph/-- samples with 9-14 nodes containing multiple communities and bridge edges.",
+    "Focus on disconnected macro-components: include 2-3 disconnected components, each internally dense and visually distinct.",
+    "Focus on cyclic subsystems: embed several local cycles within a larger mostly acyclic structure.",
+    "Focus on mixed motifs: combine stars, chains, trees, and mesh-like neighborhoods in one coherent large graph.",
+    # Global graph-level settings
+    "Focus on graph-wide theming: set global node/edge defaults (fontname, fontsize, color, shape) then override selectively for key nodes.",
+    "Focus on background composition: use graph bgcolor and filled clusters to establish layered visual depth in large diagrams.",
+    "Focus on metadata framing: include graph labels, subtitles, and tooltips that fit without colliding with dense content.",
+    "Focus on typography hierarchy: vary font sizes for titles, subsystem labels, and edge annotations in a single sample.",
+    "Focus on layout engine stress: combine dense defaults with selective overrides to test visual consistency at larger scale.",
+    # Domain-specific complex schemas
+    "Focus on cloud platform architecture: include edge, app, data, observability, and security subsystems with many inter-service flows.",
+    "Focus on microservice dependencies: model service-to-service calls, async queues, databases, and caches with clear ownership boundaries.",
+    "Focus on ETL and analytics: represent ingestion, validation, transformation, warehouse, and dashboard layers with branching data paths.",
+    "Focus on distributed workflow engines: include schedulers, workers, retries, dead-letter queues, and monitoring links.",
+    "Focus on enterprise integration: connect internal systems, third-party APIs, identity providers, and audit sinks across trust boundaries.",
+    # Security / threat / trust modeling
+    "Focus on security zones: use clusters for public, DMZ, private, and restricted zones with explicit allow/deny and inspection paths.",
+    "Focus on attack-path overlays: include normal traffic edges plus adversarial edges (exploit/lateral movement/exfiltration) in contrasting styles.",
+    "Focus on authN/authZ flows: model identity provider, token service, policy engine, and resource servers with success/failure branches.",
+    "Focus on trust gradients: map low-trust to high-trust transitions using color progression and gatekeeping decision nodes.",
+    "Focus on defense-in-depth: include firewalls, WAF, IDS, and policy checks inserted at multiple points in a large topology.",
+    # UI / UX / product flow complexity
+    "Focus on multi-screen app journeys: model 10+ screens/states with alternate paths, error recovery, and return loops.",
+    "Focus on persona-specific branches: include shared core flow plus admin/guest/power-user branches that rejoin downstream.",
+    "Focus on error-heavy UX: include multiple failure nodes with retry/escalation paths and clear terminal outcomes.",
+    "Focus on asynchronous UI events: add webhook/push/timeout edges to complement primary navigation transitions.",
+    "Focus on persistence and sync: connect UI states to cache/local storage/server sync nodes with conflict-resolution paths.",
+    # Sequence / lifecycle / versioning at scale
+    "Focus on long lifecycle diagrams: represent 8-12 lifecycle states with guards, retries, and timeout-based transitions.",
+    "Focus on temporal workflows: label edges with phases or timestamps and vary minlen to imply elapsed time across many steps.",
+    "Focus on release trains: model trunk, release branches, hotfix branches, merge points, and rollback paths in one graph.",
+    "Focus on orchestration timelines: show parallel tracks that synchronize at checkpoints before proceeding to later phases.",
+    "Focus on failover lifecycles: include health checks, failover triggers, standby activation, and recovery back to primary.",
+    # Mathematical / logic structures at larger scale
+    "Focus on large decision structures: create multi-level boolean decision trees with repeated conditions and labeled outcomes.",
+    "Focus on probabilistic branching: assign probability labels on many branches and include converging expected-value aggregation nodes.",
+    "Focus on computation graphs: represent variables, transforms, and aggregation nodes with multiple shared dependencies.",
+    "Focus on rule-engine networks: combine AND/OR/XOR logic nodes with policy and exception branches.",
+    "Focus on set-and-relation systems: use clusters as sets and connect many elements with membership and cross-set relation edges.",
+    # Load balancing / reliability / operations
+    "Focus on global traffic distribution: include edge routing, load balancers, regional pools, and weighted traffic split edges.",
+    "Focus on bottleneck analysis: include one constrained resource with many inbound edges and explicit queue/backpressure semantics.",
+    "Focus on multi-region resilience: create region clusters with replication, health probes, and failover routing between regions.",
+    "Focus on queue-centric systems: represent producers, brokers, partitions, consumers, and dead-letter processing paths.",
+    "Focus on observability overlays: add logging, tracing, and metrics nodes receiving edges from most major services.",
+    # Edge-case stress for vision + parsing
+    "Focus on long and short label coexistence: mix terse IDs and long descriptive labels across 10+ nodes without syntax errors.",
+    "Focus on crossing-edge disambiguation: intentionally create numerous edge crossings but differentiate flows via color/style/labels.",
+    "Focus on dense fan-in/fan-out: include nodes with both very high in-degree and high out-degree in the same sample.",
+    "Focus on repeated motifs: replicate similar substructures in different clusters while varying labels and interconnections.",
+    "Focus on near-saturation complexity: push edge count toward the upper range while retaining coherent subsystem semantics.",
+    # Compositional mega-prompts
+    "Focus on full-system architecture: combine clusters, diverse shapes, HTML labels, rich edge semantics, and layout constraints in one cohesive graph.",
+    "Focus on architecture plus threat overlay: build a normal service topology and superimpose security and failure paths.",
+    "Focus on data + control plane split: represent separate planes with dedicated clusters and frequent but well-labeled interaction points.",
+    "Focus on event-driven enterprise flow: combine synchronous requests, asynchronous events, retries, and audit pipelines.",
+    "Focus on maximum realistic complexity: generate 12-18 nodes and 20-45 edges with clear naming, visual hierarchy, and syntactic correctness.",
+    # Flowchart-focused complex additions
+    "Focus on flowcharts with explicit Start/End terminators, 2-4 decision diamonds, and labeled Yes/No branches that rejoin downstream.",
+    "Focus on exception-aware flowcharts: include normal paths, failure paths, retry loops, and terminal error states.",
+    "Focus on parallel flowcharts: model a fork into 2-3 concurrent branches and a later join node before completion.",
+    "Focus on role-based flowcharts using clusters as swimlanes (e.g., User, API, Worker, Database) with cross-lane handoffs.",
+    "Focus on approval flowcharts with multi-step reviews, conditional escalations, and timeout branches.",
+    "Focus on onboarding flowcharts with validation checks, alternate branches for incomplete inputs, and recovery paths.",
+    "Focus on data-processing flowcharts: ingest, validate, transform, persist, and notify, including at least one rollback or compensating path.",
+    "Focus on support-triage flowcharts with severity-based decision nodes and distinct resolution paths.",
+]
+
 
 def get_synthethic_data_gen_simple_system_prompt(batch_size: int = 50):
     return f"""
@@ -233,6 +348,31 @@ def get_synthethic_data_gen_simple_system_prompt(batch_size: int = 50):
     - Vary graph types: chains, stars, loops, DAGs, and disconnected components, etc
     - Either use 'graph' for undirected (with '--') and 'digraph' for directed (with '->') consistently
     - Use diverse node IDs (e.g., 'User', 'db_01', 'Node_A') in addition to single letters (e.g., 'A", 'B')
+    - Do NOT reuse the same node/edge names and structure across all samples
+    - DO NOT use hex codes - only use named colors
+    - Frequently include visual attributes like colors, shapes, and styles
+    
+    """
+
+
+def get_synthethic_data_gen_complex_system_prompt(batch_size: int = 50):
+    return f"""
+    You are an expert in the Graphviz DOT language. You generate diverse, valid Graphviz DOT language samples to train a vision-language model.
+    Your goal is to provide wide structural and visual variety in the graphviz code samples you generate.
+    
+    ## Formatting Requirements:
+    - Return exactly {batch_size} samples in a JSON object with a `dot_codes` list field
+    - Each sample must be a complete, standalone, syntactically valid Graphviz program
+    - Use '\\n' characters to format the code. Place a newline after the opening brace, after every node/edge definition, before the closing brace, and wherever it is applicable
+    - Do NOT include comments or blank lines at the top or bottom
+    - Do NOT include any explanations, markdown, prose, or backticks. Only raw DOT code
+    
+    ## Structural Requirements:
+    - Nodes: 9-18. Edges: 15-45. Keep each graph relatively complex, with each having 9-18 nodes and 15-45 edges, but with variety in structure
+    - Vary graph types: chains, stars, loops, DAGs, and disconnected components, etc
+    - Either use 'graph' for undirected (with '--') and 'digraph' for directed (with '->') consistently
+    - Use diverse node IDs (e.g., 'User', 'db_01', 'Start', 'Finish', 'Node_A')
+    - Use diverse and complex graph types, such as system designs, architectures, flowcharts, decision trees, etc.
     - Do NOT reuse the same node/edge names and structure across all samples
     - DO NOT use hex codes - only use named colors
     - Frequently include visual attributes like colors, shapes, and styles

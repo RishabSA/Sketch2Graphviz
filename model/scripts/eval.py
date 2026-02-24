@@ -18,10 +18,7 @@ from scripts.graphviz_renderer import (
 )
 from scripts.model import Sketch2GraphvizVLM, load_sketch2graphviz_vlm
 from scripts.psql_vector_db import get_top_k_similar_vectors_from_db
-from scripts.data import (
-    get_json_graphviz_json_dataloaders,
-    make_inputs_and_labels_vlm,
-)
+from scripts.data import get_json_graphviz_json_dataloaders, make_inputs_and_labels_vlm
 from scripts.prompts import graphviz_code_from_image_instruction
 
 
@@ -229,7 +226,7 @@ def generate_vlm_outputs(
     use_rag: bool = True,
     top_K_rag: int = 5,
     max_new_tokens: int = 1024,
-    do_sample: bool = True,
+    do_sample: bool = False,
     temperature: float = 1.0,
     skip_special_tokens: bool = True,
     description: str = "Testing",
@@ -495,7 +492,7 @@ if __name__ == "__main__":
     batch_size = 1
 
     train_dataloader, test_dataloader = get_json_graphviz_json_dataloaders(
-        json_path="simple_synthetic_data_gen.json",
+        json_path="synthetic_data_gen.json",
         batch_size=batch_size,
         root_dir="graphviz_rendered_json",
         image_size=(768, 768),
