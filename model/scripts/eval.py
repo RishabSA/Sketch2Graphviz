@@ -214,8 +214,6 @@ def evaluate_vlm(
             loss_val,
         )
 
-        # torch.cuda.empty_cache()
-
     return test_loss / len(iterator)
 
 
@@ -225,6 +223,7 @@ def generate_vlm_outputs(
     instruction: str,
     use_rag: bool = True,
     top_K_rag: int = 5,
+    rag_user: str | None = "root",
     max_new_tokens: int = 1024,
     do_sample: bool = False,
     temperature: float = 1.0,
@@ -271,7 +270,7 @@ def generate_vlm_outputs(
                     embedding_vector=embedding_query_vector,
                     top_K=top_K_rag,
                     dbname="sketch2graphvizdb",
-                    user="root",
+                    user=rag_user,
                     table_name="graphviz_embeddings",
                 )
 
@@ -393,7 +392,11 @@ def evaluate_vlm_outputs(
             - 1.0
         )
 
-        lpips_distance = lpips_loss_fn(original_lpips_tensor, generated_lpips_tensor)
+        with torch.inference_mode():
+            lpips_distance = lpips_loss_fn(
+                original_lpips_tensor, generated_lpips_tensor
+            )
+
         lpips_distances.append(lpips_distance.item())
 
         # Structural Similarity Index (SSIM)
@@ -484,6 +487,7 @@ def evaluate_vlm_outputs(
 
 if __name__ == "__main__":
     load_dotenv()
+
     hf_token = os.getenv("HF_TOKEN")
     login(token=hf_token)
 
@@ -500,7 +504,7 @@ if __name__ == "__main__":
     )
 
     model = load_sketch2graphviz_vlm(
-        model_load_dir="checkpoints",
+        model_load_dir="lora_checkpoints",
         epoch_load=1,
         quantization="16-bit",
         is_training=False,

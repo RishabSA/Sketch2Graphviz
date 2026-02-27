@@ -23,5 +23,7 @@ fastapi
 uvicorn
 pydantic
 python-multipart
-skimage
+scikit-image
 lpips
+azure-identity
+azure-ai-projects

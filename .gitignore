@@ -1,5 +1,5 @@
 # Custom
-checkpoints/
+lora_checkpoints/
 postgreSQL_data/
 
 # Byte-compiled / optimized / DLL files

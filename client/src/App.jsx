@@ -128,10 +128,10 @@ function App() {
 			}, 2000);
 		} catch (err) {
 			toast.error(
-				`An unexpected error occurred while attempting to copy text: ${err}`
+				`An unexpected error occurred while attempting to copy text: ${err}`,
 			);
 			console.error(
-				`An unexpected error occurred while attempting to copy text: ${err}`
+				`An unexpected error occurred while attempting to copy text: ${err}`,
 			);
 		}
 	};
@@ -144,10 +144,10 @@ function App() {
 			setGraphvizCode(dot);
 		} catch (e) {
 			toast.error(
-				`An unexpected error occurred while attempting to convert the sketch: ${e}.`
+				`An unexpected error occurred while attempting to convert the sketch: ${e}.`,
 			);
 			console.error(
-				`An unexpected error occurred while attempting to convert the sketch: ${e}.`
+				`An unexpected error occurred while attempting to convert the sketch: ${e}.`,
 			);
 		} finally {
 			setLoading(false);
@@ -161,15 +161,15 @@ function App() {
 			const dot = await requestGraphvizCodeEdit(
 				editText,
 				graphvizCode,
-				useSelectiveChanges
+				useSelectiveChanges,
 			);
 			setGraphvizCode(dot);
 		} catch (e) {
 			toast.error(
-				`An unexpected error occurred while attempting to make an edit to the Graphviz DOT code: ${e}.`
+				`An unexpected error occurred while attempting to make an edit to the Graphviz DOT code: ${e}.`,
 			);
 			console.error(
-				`An unexpected error occurred while attempting to make an edit to the Graphviz DOT code: ${e}.`
+				`An unexpected error occurred while attempting to make an edit to the Graphviz DOT code: ${e}.`,
 			);
 		} finally {
 			setLoading(false);
@@ -276,7 +276,7 @@ function App() {
 									onClick={() =>
 										window.open(
 											"https://www.linkedin.com/in/rishab-alagharu",
-											"_blank"
+											"_blank",
 										)
 									}
 									className="transition-all inline-flex items-center justify-between w-full px-4 py-2 text-neutral-900 bg-white border border-neutral-200 rounded-lg cursor-pointer dark:hover:text-neutral-300 dark:border-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 dark:text-white dark:bg-neutral-800 dark:hover:bg-neutral-700">
@@ -511,7 +511,7 @@ function App() {
 							style={{ aspectRatio: "1 / 1" }}>
 							<div
 								ref={graphvizContainerRef}
-								className="w-full h-full flex items-center justify-center"
+								className="w-full h-full flex items-center justify-center [&>svg]:w-7/8 [&>svg]:h-auto [&>svg]:max-h-7/8"
 							/>
 						</div>
 

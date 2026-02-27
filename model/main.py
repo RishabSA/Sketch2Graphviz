@@ -52,20 +52,12 @@ async def lifespan(app: FastAPI):
         login(token=hf_token)
 
         model = load_sketch2graphviz_vlm(
-            model_load_dir="checkpoints",
-            epoch_load=1,
+            model_load_dir="lora_checkpoints",
+            epoch_load=3,
             quantization=quantization,
             is_training=False,
             device=device,
         )
-
-        # model = load_sketch2graphviz_vlm(
-        #     model_load_dir=None,
-        #     epoch_load=None,
-        #     quantization=quantization,
-        #     is_training=False,
-        #     device=device,
-        # )
 
         app.state.model = model
 
@@ -120,6 +112,7 @@ async def get_graphviz_code_from_image(
             should_print_instruction=False,
             use_rag=use_rag,
             top_K_rag=top_K_rag,
+            rag_user="root",
             max_new_tokens=2048,
             do_sample=False,
             temperature=0.3,

@@ -18,6 +18,7 @@ def predict_graphviz_dot_from_image(
     should_print_instruction: bool = False,
     use_rag: bool = True,
     top_K_rag: int = 5,
+    rag_user: str | None = "root",
     max_new_tokens: int = 1024,
     do_sample: bool = False,
     temperature: float = 1.0,
@@ -62,7 +63,7 @@ def predict_graphviz_dot_from_image(
             embedding_vector=embedding_query_vector,
             top_K=top_K_rag,
             dbname="sketch2graphvizdb",
-            user="root",
+            user=rag_user,
             table_name="graphviz_embeddings",
         )
 
@@ -170,7 +171,7 @@ if __name__ == "__main__":
         model.llama_model.enable_input_require_grads()
 
     model = load_sketch2graphviz_vlm(
-        model_load_dir="checkpoints",
+        model_load_dir="lora_checkpoints",
         epoch_load=10,
         quantization="16-bit",
         is_training=False,
@@ -184,6 +185,7 @@ if __name__ == "__main__":
         should_print_instruction=False,
         use_rag=False,
         top_K_rag=5,
+        rag_user=None,
         max_new_tokens=2048,
         do_sample=True,
         temperature=1.0,

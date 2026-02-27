@@ -112,20 +112,43 @@ def convert_graphviz_dot_to_networkx(dot_code: str) -> nx.Graph:
 
 if __name__ == "__main__":
     dot_code = """
-digraph G26 {
-    node [shape=hex, style=filled, fillcolor=white]; 
-    hA [fillcolor=gold]; 
-    hB [fillcolor=lightsteelblue]; 
-    hC [fillcolor=lightgreen]; 
-    hD [fillcolor=lightpink]; 
-    hA -> hB [color=black, style=solid, weight=4, penwidth=2]; 
-    hB -> hC [color=blue, style=dotted, weight=1]; 
-    hC -> hD [color=gray, style=dashed, weight=2]; 
+graph CulturalNetwork48 {
+layout=neato;
+node [shape=ellipse, style=filled, color=lightpink];
+Artist [label="Artist"];
+Gallery [label="Gallery"];
+Museum [label="Museum"];
+Curator [label="Curator"];
+Collector [label="Collector"];
+Critic [label="Critic"];
+Auction [label="Auction_House", shape=folder];
+Patron [label="Patron", shape=oval];
+Publication [label="Publication", shape=note];
+Exhibition [label="Exhibition", shape=box3d];
+Artist -- Gallery;
+Artist -- Museum;
+Gallery -- Curator;
+Museum -- Curator;
+Curator -- Exhibition;
+Exhibition -- Publication;
+Collector -- Auction;
+Auction -- Gallery;
+Patron -- Collector;
+Critic -- Publication;
+Publication -- Critic;
+Gallery -- Collector [style=dashed];
+Artist -- Critic [style=dotted];
+Museum -- Patron;
+Exhibition -- Patron;
+Collector -- Museum;
 }
     """
 
     file_path = render_graphviz_dot_code(
-        dot_code=dot_code, name="test_graph", folder="testing_outputs", size=(768, 768)
+        dot_code=dot_code,
+        name="complex_graph_3",
+        folder="testing_outputs",
+        size=(768, 768),
     )
     print(f"Saved graph to: {file_path}")
 

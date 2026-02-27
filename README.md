@@ -13,9 +13,7 @@ The server uses FastAPI and is deployed with Docker.
 
 ## Setup
 
-The server uses Docker and can be deployed to services such as Runpod to be run with FastAPI and have GPU access. The public docker image can be accessed at **[rishabsa/sketch2graphviz:latest](https://hub.docker.com/r/rishabsa/sketch2graphviz)** on DockerHub.
-
-For my setup, I used [Runpod](https://www.runpod.io/) to host my FastAPI server with GPU access.
+The server uses Docker and can be deployed to services such as Runpod to be run with FastAPI and have GPU access. The public docker image can be accessed at **[rishabsa/sketch2graphviz:latest](https://hub.docker.com/r/rishabsa/sketch2graphviz)** on DockerHub. Docker containerizes the built model, FastAPI server, and PostgreSQL database. The project Docker image is used on [Runpod](https://www.runpod.io/) to host the FastAPI server with GPU access.
 
 ### Runpod Setup
 
@@ -29,46 +27,15 @@ Create a pod with an appropriate GPU (~12-16 GB VRAM for the 4-bit quantized mod
 - Uncheck "Start Jupyter notebook"
 - Deploy the pod on-demand
 
-The FastAPI server will being to start, and in the logs, you should see the `meta-llama/Llama-3.2-11B-Vision-Instruct` model being downloaded and loaded in to VRAM with the fine-tuned LoRA adapters loaded from storage. By default, the base model is loaded with **4-bit quantization** and the LoRA adapters are loaded in **32-bits**.
+The FastAPI server will being to start, and in the logs, you should see the `meta-llama/Llama-3.2-11B-Vision-Instruct` model being downloaded and loaded in to VRAM with the fine-tuned LoRA adapters loaded from storage. By default, the base model is loaded with **4-bit quantization** and the LoRA adapters are loaded in **32-bits**. The Dockerfile automatically downloads and sets up PostgreSQL and PGVector, and also loads in the saved `sketch2graphvizdb.sql` file, which contains the vector embeddings and DOT code samples for RAG similarity search.
 
-Once this setup is complete, PostgreSQL and PGVector need to be setup from the web terminal for the pod. Access the Runpod web terminal and use the below commands in order, to install and setup PostgreSQL, PGVector, and the Sketch2Graphviz Database. `sketch2graphvizdb.sql` is provided in the Docker image and contains all of the stored Graphviz codes and their corresponding vector embeddings to be used in a similarity search for RAG.
-
-```bash
-apt update
-apt install -y postgresql-common ca-certificates
-apt install -y postgresql postgresql-contrib
-apt install -y git build-essential postgresql-server-dev-14
-
-cd /tmp
-git clone --branch v0.8.1 https://github.com/pgvector/pgvector.git
-cd pgvector
-make && make install
-
-
-service postgresql start
-service postgresql status
-su - postgres
-psql
-
-CREATE ROLE root WITH LOGIN SUPERUSER;
-CREATE DATABASE sketch2graphvizdb;
-\c sketch2graphvizdb
-CREATE EXTENSION IF NOT EXISTS vector;
-\dx
-
-\q
-exit
-
-su - postgres -c "psql -d sketch2graphvizdb -f /app/postgreSQL_data/sketch2graphvizdb_2.sql"
-```
-
-Once all of these setup steps are finished, run the below command on your local machine from the root directory (change the runpod server to the one provided to you) to test out the FastAPI server and the Sketch2Graphviz model:
+To test that everything works correctly, you can run the below command on your local machine from the root directory (change the runpod server to the one provided to you) to test out the FastAPI server and the Sketch2Graphviz model:
 
 ```bash
 curl -X POST https://<RUNPOD_POD>-8000.proxy.runpod.net/graphviz_code_from_image -F "file=@model/testing_graphs/graph_6.png"
 ```
 
-Run the React JS + Vite frotend client with `npm run dev` from the client directory. Make sure that you set the server URL to the server URL at which the Sketch2Graphviz FastAPI server and model are hosted.
+Run the React JS + Vite frotend client with `npm run dev` from the client directory. Make sure that you set the server URL to the server URL at which the Sketch2Graphviz FastAPI server and model are hosted in the `.env` file.
 
 The Sketch2Graphviz web application allows you to sketch a graph or flowchart with multiple shapes and colors, or upload an image to then be converted to Graphviz code. The website also renders the generated Graphviz code, allowing you to make any necessary tweaks to the generated code.
 
@@ -81,6 +48,8 @@ Because there are no publicly available Graphviz datasets that provide DOT code 
 ### Model and Low-Rank Adaptation (LoRA) Fine-Tuning
 
 The Sketch2Graphviz Vision-Language model (VLM) uses the 11 billion parameter `meta-llama/Llama-3.2-11B-Vision-Instruct` as a base model. The base model was fine-tuned with LoRA adapters on the linear layers in both the image encoder and text decoder. The model was loaded with **16-bit quantization** for LoRA fine-tuning and **4-bit quantization** for inferencing and deployment on the FastAPI server to reduce VRAM usage and deployment costs, with no noticeable impact on results.
+
+Due to limited compute, the model was trained with a batch size of 1 with gradient accumulation. Backpropagation was performed once per batch to accumulate gradients, but the optimization step and updating parameters was only done after every 16 epochs, leading to an effective batch of size 16.
 
 ### Retrieval-Augmented Generation (RAG) and Vector Database
 

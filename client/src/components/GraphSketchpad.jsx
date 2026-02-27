@@ -84,12 +84,12 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 	const [image, setImage] = useState(undefined);
 	const [stageSize, setStageSize] = useState(768);
 	const [isDraggable, setIsDraggable] = useState(
-		drawAction === DrawAction.Select
+		drawAction === DrawAction.Select,
 	);
 	const [imageRenderProps, setImageRenderProps] = useState(null);
 	const [editingTextId, setEditingTextId] = useState(null);
 	const [textEditor, setTextEditor] = useState({ x: 0, y: 0, value: "" });
-	const [useRag, setUseRag] = useState(true);
+	const [useRag, setUseRag] = useState(false);
 
 	const wrapperRef = useRef(null);
 	const fileRef = useRef(null);
@@ -248,8 +248,8 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 
 		setTexts(prev =>
 			prev.map(t =>
-				t.id === editingTextId ? { ...t, text: textEditor.value } : t
-			)
+				t.id === editingTextId ? { ...t, text: textEditor.value } : t,
+			),
 		);
 
 		setEditingTextId(null);
@@ -326,31 +326,35 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 
 		if (drawAction === DrawAction.Pen) {
 			setPens(prev =>
-				prev.map(s => (s.id === id ? { ...s, points: [...s.points, x, y] } : s))
+				prev.map(s =>
+					s.id === id ? { ...s, points: [...s.points, x, y] } : s,
+				),
 			);
 		} else if (drawAction === DrawAction.Eraser) {
 			setErasers(prev =>
-				prev.map(s => (s.id === id ? { ...s, points: [...s.points, x, y] } : s))
+				prev.map(s =>
+					s.id === id ? { ...s, points: [...s.points, x, y] } : s,
+				),
 			);
 		} else if (drawAction === DrawAction.Circle) {
 			setCircles(prev =>
 				prev.map(c =>
 					c.id === id
 						? { ...c, radius: ((x - c.x) ** 2 + (y - c.y) ** 2) ** 0.5 }
-						: c
-				)
+						: c,
+				),
 			);
 		} else if (drawAction === DrawAction.Rectangle) {
 			setRectangles(prev =>
 				prev.map(r =>
-					r.id === id ? { ...r, height: y - r.y, width: x - r.x } : r
-				)
+					r.id === id ? { ...r, height: y - r.y, width: x - r.x } : r,
+				),
 			);
 		} else if (drawAction === DrawAction.Arrow) {
 			setArrows(prev =>
 				prev.map(a =>
-					a.id === id ? { ...a, points: [a.points[0], a.points[1], x, y] } : a
-				)
+					a.id === id ? { ...a, points: [a.points[0], a.points[1], x, y] } : a,
+				),
 			);
 		}
 	}, [drawAction]);
@@ -368,7 +372,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 			transformerRef.current.nodes([node]);
 			transformerRef.current.getLayer().batchDraw();
 		},
-		[drawAction]
+		[drawAction],
 	);
 
 	const deleteSelected = useCallback(() => {
@@ -520,7 +524,7 @@ export const GraphSketchpad = ({ convertToGraphviz }) => {
 									onDragEnd={e => {
 										const { x, y } = e.target.position();
 										setTexts(prev =>
-											prev.map(tt => (tt.id === t.id ? { ...tt, x, y } : tt))
+											prev.map(tt => (tt.id === t.id ? { ...tt, x, y } : tt)),
 										);
 									}}
 								/>

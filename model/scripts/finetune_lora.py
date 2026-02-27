@@ -82,7 +82,7 @@ def finetune_vlm_lora(
     use_val_early_stopping: bool = True,
     early_stopping_patience: int = 2,
     max_grad_norm: float = 1.0,
-    model_save_dir: str = "checkpoints",
+    model_save_dir: str = "lora_checkpoints",
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
 ) -> tuple[Sketch2GraphvizVLM, list[float], list[float]]:
     # Add Peft LoRA adapters to the VLM
@@ -191,8 +191,6 @@ def finetune_vlm_lora(
                 loss_val,
             )
 
-            # torch.cuda.empty_cache()
-
         os.makedirs(model_save_dir, exist_ok=True)
 
         # Save LoRA for Llama
@@ -288,7 +286,7 @@ if __name__ == "__main__":
         use_val_early_stopping=True,
         early_stopping_patience=early_stopping_patience,
         max_grad_norm=max_grad_norm,
-        model_save_dir="checkpoints",
+        model_save_dir="lora_checkpoints",
         device=device,
     )
 

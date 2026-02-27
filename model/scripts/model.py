@@ -253,7 +253,7 @@ def print_num_params(model: nn.Module) -> None:
 
 def save_sketch2graphviz_vlm(
     model: Sketch2GraphvizVLM,
-    model_save_dir: str = "checkpoints",
+    model_save_dir: str = "lora_checkpoints",
     epoch_save: int | None = None,
 ) -> None:
     assert (
@@ -269,7 +269,7 @@ def save_sketch2graphviz_vlm(
 
 
 def load_sketch2graphviz_vlm(
-    model_load_dir: str = "checkpoints",
+    model_load_dir: str = "lora_checkpoints",
     epoch_load: int = None,
     quantization: str = "16-bit",
     is_training: bool = False,
