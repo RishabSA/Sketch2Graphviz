@@ -13,7 +13,30 @@ Epoch 3:
 
 ## Final Model Evaluation Results
 
+**No RAG:**
+
 **Test Loss:** 0.129601
+
+**Render Successes**: 914
+**Render Fails**: 19
+**Render Success Rate**: 0.9796
+**Mean SSIM**: 0.9306
+**Mean LPIPS**: 0.1352
+**Mean Isomorphism Rate**: 0.4352
+**Mean Node F1**: 0.5453
+**Mean Edge F1**: 0.4974
+**Mean Node Attribute F1**: 0.4879
+**Mean Edge Attribute F1**: 0.4703
+
+**LLM-as-a-Judge Correct**: 804
+**LLM-as-a-Judge Total**: 933
+**LLM-as-a-Judge Accuracy**: 86.17%
+
+**RAG:**
+
+**LLM-as-a-Judge Correct**: 831
+**LLM-as-a-Judge Total**: 933
+**LLM-as-a-Judge Accuracy**: 89.07%
 
 ## Model Generations on Select Examples
 
