@@ -53,10 +53,10 @@ class HandDrawnWhiteBoardTransform:
 
         self.pipeline = transforms.Compose(transform)
 
-    @staticmethod
-    def soft_edge_map(gray: torch.Tensor) -> torch.Tensor:
+    def soft_edge_map(self, gray: torch.Tensor) -> torch.Tensor:
         # gray shape: (1, H, W)
 
+        # Sobel convolution is a 3x3 convolution for edge detection
         sobel_convolution_x = torch.tensor(
             [
                 [
@@ -110,8 +110,7 @@ class HandDrawnWhiteBoardTransform:
 
         return torch.clamp(out, 0.0, 1.0)
 
-    @staticmethod
-    def add_grain(tensor_img: torch.Tensor) -> torch.Tensor:
+    def add_grain(self, tensor_img: torch.Tensor) -> torch.Tensor:
         sigma = random.uniform(0.01, 0.02)
         noise = torch.randn_like(tensor_img) * sigma
 

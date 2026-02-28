@@ -177,7 +177,7 @@ class Sketch2GraphvizVLM(nn.Module):
     ) -> list[str]:
         input_texts = []
         for prompt in prompts:
-            # images is PIL image for standard graph to code and images is None for selective edits
+            # images is a PIL image for standard graph to code or None for selective edits
             messages = [
                 {
                     "role": "user",
@@ -223,7 +223,7 @@ class Sketch2GraphvizVLM(nn.Module):
 
             # Extract only the generated Graphviz code response from the full prompt + generation text
             response_only = []
-            for i in range(out.size(0)):
+            for i in range(out.shape[0]):
                 prompt_len = int(prompt_lengths[i].item())
                 response_list = out[i, prompt_len:].tolist()
 

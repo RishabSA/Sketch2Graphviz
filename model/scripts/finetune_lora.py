@@ -22,7 +22,7 @@ from scripts.prompts import graphviz_code_from_image_instruction
 
 
 def add_lora_to_VLM(
-    model: Sketch2GraphvizVLM, rank: int = 32, alpha: int = 64, dropout: float = 0.05
+    model: Sketch2GraphvizVLM, rank: int = 64, alpha: int = 128, dropout: float = 0.05
 ) -> Sketch2GraphvizVLM:
     if isinstance(model.llama_model, PeftModel):
         print("Llama model already has LoRA attached...")
@@ -72,9 +72,9 @@ def finetune_vlm_lora(
     train_dataloader: DataLoader,
     val_dataloader: DataLoader,
     instruction: str,
-    rank: int = 32,
+    rank: int = 64,
     lora_dropout: float = 0.1,
-    grad_accumulation_steps: int = 1,
+    grad_accumulation_steps: int = 16,
     lr: float = 2e-4,
     weight_decay: float = 0.0,
     warmup_ratio: float = 0.1,

@@ -80,7 +80,7 @@ def get_top_k_similar_vectors_from_db(
 
         embedding_vector = np.asarray(embedding_vector, dtype="float32")
 
-        # Get the top-K closest Graphviz codes from the table by Euclidean (L2) distance to the embedding vector
+        # Get the top-K closest Graphviz codes and distances to the embedding vector from the table by Euclidean (L2) distance to the embedding vector
         cur.execute(
             f"""
             SELECT id, code, embedding <-> %s AS distance
