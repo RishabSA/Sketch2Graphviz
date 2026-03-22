@@ -1,81 +1,334 @@
 # Sketch2Graphviz
 
-![Sketch2Graphviz Icon](/client/public/assets/icon.svg)
+<p align="center">
+  <img src="/client/public/assets/icon.svg" alt="Sketch2Graphviz Icon" width="120"/>
+</p>
+
+<p align="center">
+  <strong>Convert hand-drawn sketches and images of graphs into proper Graphviz DOT code using a fine-tuned Vision-Language Model with Retrieval-Augmented Generation.</strong>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> &bull;
+  <a href="#demos">Demos</a> &bull;
+  <a href="#architecture">Architecture</a> &bull;
+  <a href="#getting-started">Getting Started</a> &bull;
+  <a href="#api-reference">API Reference</a> &bull;
+  <a href="#model-details">Model Details</a> &bull;
+  <a href="#evaluation-results">Evaluation Results</a>
+</p>
+
+---
+
+## Demos
 
 <img src="resources/complex_graph_1_demo.png" alt="Sketch2Graphviz Demo on a Complex Graph" width="49%"/> <img src="resources/sketch_demo.png" alt="Sketch2Graphviz Demo on a Sketch of a Diagram" width="49%"/>
 
 <img src="resources/architecture_demo.png" alt="Sketch2Graphviz Architecture Diagram Demo" width="49%"/> <img src="resources/flowchart_demo.png" alt="Sketch2Graphviz Flowchart Demo with an Edit" width="49%"/>
 
-**Sketch2Graphviz** allows you to convert sketches or images of graphs and flowcharts to proper Graphviz code using a **LoRA fine-tuned Llama 3.2 11B Vision** and **Retrieval-Augmented Generation (RAG)** through a vector database built with PostgreSQL and PGVector, making a previously tedious and manual task fast, effortless, and automated.
+---
 
-The client-side web application uses React JS, Vite, and Tailwind CSS.
-The server uses FastAPI and is deployed with Docker.
+## Features
 
-## Setup
+- **Sketch-to-Code Conversion** - Draw a graph or flowchart on an interactive canvas, or upload an image, and get Graphviz DOT code generated automatically
+- **RAG-Enhanced Generation** - Retrieval-Augmented Generation via a PostgreSQL/PGVector vector database provides few-shot examples for higher quality output (89.07% vs 86.17% LLM-as-Judge accuracy)
+- **Live Graphviz Rendering** - Generated DOT code is rendered as an SVG in real time, with download options for SVG and PNG
+- **Code Editing** - Refine generated code with natural language edit requests using rewrite or selective edit modes
+- **Interactive Drawing Canvas** - Full-featured sketchpad with multiple shapes, colors, and drawing tools built with Konva
 
-The server uses Docker and can be deployed to services such as Runpod to be run with FastAPI and have GPU access. The public docker image can be accessed at **[rishabsa/sketch2graphviz:latest](https://hub.docker.com/r/rishabsa/sketch2graphviz)** on DockerHub. Docker containerizes the built model, FastAPI server, and PostgreSQL database. The project Docker image is used on [Runpod](https://www.runpod.io/) to host the FastAPI server with GPU access.
+---
 
-### Runpod Setup
+## Architecture
 
-Create a pod with an appropriate GPU (~12-16 GB VRAM for the 4-bit quantized model or ~24 GB VRAM for the 16-bit quantized model). For my purposes, I deployed the 4-bit quantized model on a RTX A5000 with 24 GB VRAM.
+**Sketch2Graphviz** uses a **LoRA fine-tuned Llama 3.2 11B Vision Instruct** model as its core Vision-Language Model (VLM). At inference time, the input image is embedded using the VLM's vision encoder, and a similarity search against a **PostgreSQL + PGVector** vector database retrieves the top-K most similar Graphviz DOT code samples. These retrieved examples are injected into the prompt as few-shot context before the model generates the final DOT code.
 
-- Use the **rishabsa/sketch2graphviz:latest** docker image as the template on Runpod
-- Set the container disk and volume disk storage both to ~40 GB
-- Expose HTTP port `8000`
-- Set an environment variable with the key `HF_TOKEN` and the value being a huggingface token with read permissions
-  - Note: Make sure that you have been granted access to `meta-llama/Llama-3.2-11B-Vision-Instruct` on HuggingFace as it is a gated model
-- Uncheck "Start Jupyter notebook"
-- Deploy the pod on-demand
+| Component             | Technology                           |
+| --------------------- | ------------------------------------ |
+| Vision-Language Model | Llama 3.2 11B Vision Instruct + LoRA |
+| Vector Database       | PostgreSQL + PGVector                |
+| Backend API           | FastAPI + Uvicorn                    |
+| Frontend              | React 19, Vite, Tailwind CSS         |
+| Drawing Canvas        | Konva / react-konva                  |
+| Graphviz Rendering    | Viz.js                               |
+| Containerization      | Docker                               |
+| Deployment            | Runpod (GPU)                         |
 
-The FastAPI server will being to start, and in the logs, you should see the `meta-llama/Llama-3.2-11B-Vision-Instruct` model being downloaded and loaded in to VRAM with the fine-tuned LoRA adapters loaded from storage. By default, the base model is loaded with **4-bit quantization** and the LoRA adapters are loaded in **32-bits**. The Dockerfile automatically downloads and sets up PostgreSQL and PGVector, and also loads in the saved `sketch2graphvizdb.sql` file, which contains the vector embeddings and DOT code samples for RAG similarity search.
+---
 
-To test that everything works correctly, you can run the below command on your local machine from the root directory (change the runpod server to the one provided to you) to test out the FastAPI server and the Sketch2Graphviz model:
+## Project Structure
 
-```bash
-curl -X POST https://<RUNPOD_POD>-8000.proxy.runpod.net/graphviz_code_from_image -F "file=@model/testing_graphs/graph_6.png"
+```
+Sketch2Graphviz/
+├── client/                          # React + Vite frontend
+│   ├── public/
+│   │   └── assets/                  # Static assets (icon, etc.)
+│   ├── src/
+│   │   ├── api/
+│   │   │   ├── server.js            # API client for FastAPI server
+│   │   │   └── axios.js             # Axios instance configuration
+│   │   ├── components/
+│   │   │   └── GraphSketchpad.jsx   # Interactive Konva drawing canvas
+│   │   ├── App.jsx                  # Main app layout, state, rendering
+│   │   └── main.jsx                 # React entry point
+│   ├── package.json
+│   └── vite.config.js
+│
+├── model/                           # Python backend and ML model
+│   ├── main.py                      # FastAPI server entry point
+│   ├── llm_judge.py                 # LLM-based evaluation (Azure AI)
+│   ├── requirements.txt             # Python dependencies
+│   ├── Dockerfile                   # Full-stack Docker image
+│   ├── scripts/
+│   │   ├── model.py                 # Sketch2GraphvizVLM model class
+│   │   ├── inference.py             # Inference pipeline with RAG
+│   │   ├── finetune_lora.py         # LoRA fine-tuning loop
+│   │   ├── eval.py                  # Evaluation metrics (SSIM, LPIPS, F1, etc.)
+│   │   ├── data.py                  # Dataset classes and augmentations
+│   │   ├── prompts.py               # System and generation prompts
+│   │   ├── graphviz_renderer.py     # DOT code to PNG rendering
+│   │   ├── embeddings.py            # Image embedding generation for RAG
+│   │   ├── selective_edit.py        # Selective JSON-based code editing
+│   │   ├── psql_vector_db.py        # Vector DB operations (PGVector)
+│   │   └── synthetic_data_gen.py    # Synthetic DOT data generation (OpenAI)
+│   ├── lora_checkpoints/            # Saved LoRA adapter weights
+│   │   ├── epoch_1_vlm_lora/
+│   │   ├── epoch_2_vlm_lora/
+│   │   └── epoch_3_vlm_lora/
+│   ├── testing_graphs/              # Test images for evaluation
+│   ├── outputs/                     # Model output artifacts
+│   ├── postgreSQL_data/             # PostgreSQL database dump
+│   └── results.md                   # Model evaluation results
+│
+├── data/                            # Synthetic training datasets (JSON)
+│   ├── simple_synthetic_data_gen.json
+│   ├── synthetic_data_gen.json
+│   └── complex_synthetic_data_gen.json
+│
+├── README.md
+└── .env
 ```
 
-Run the React JS + Vite frotend client with `npm run dev` from the client directory. Make sure that you set the server URL to the server URL at which the Sketch2Graphviz FastAPI server and model are hosted in the `.env` file.
+---
 
-The Sketch2Graphviz web application allows you to sketch a graph or flowchart with multiple shapes and colors, or upload an image to then be converted to Graphviz code. The website also renders the generated Graphviz code, allowing you to make any necessary tweaks to the generated code.
+## Getting Started
 
-## Implementation Details
+### Prerequisites
 
-### Generating Synthethic Data
+- **Node.js** (v18+) and **npm** for the frontend
+- **Python 3.10+** for the backend
+- **Docker** for containerized deployment
+- A **HuggingFace** account with access to the gated [meta-llama/Llama-3.2-11B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct) model
+- A GPU with **12-16 GB VRAM** (4-bit quantized model) or **24 GB VRAM** (16-bit quantized model)
 
-Because there are no publicly available Graphviz datasets that provide DOT code of sufficient quality, I synthesized my own data by generating several Graphviz DOT code samples using the OpenAI API and the `gpt-5-mini` model. Specific types of graphs are generated with prompt suffixes that specify different types of nodes, edges, and attributes for all graphs generated in a batch.
+### Clone the Repository
 
-### Model and Low-Rank Adaptation (LoRA) Fine-Tuning
+```bash
+git clone https://github.com/RishabSA/Sketch2Graphviz.git
+cd Sketch2Graphviz
+```
 
-The Sketch2Graphviz Vision-Language model (VLM) uses the 11 billion parameter `meta-llama/Llama-3.2-11B-Vision-Instruct` as a base model. The base model was fine-tuned with LoRA adapters on the linear layers in both the image encoder and text decoder. The model was loaded with **16-bit quantization** for LoRA fine-tuning and **4-bit quantization** for inferencing and deployment on the FastAPI server to reduce VRAM usage and deployment costs, with no noticeable impact on results.
+### Frontend Setup
 
-Due to limited compute, the model was trained with a batch size of 1 with gradient accumulation. Backpropagation was performed once per batch to accumulate gradients, but the optimization step and updating parameters was only done after every 16 epochs, leading to an effective batch of size 16.
+```bash
+cd client
+npm install
+```
 
-### Retrieval-Augmented Generation (RAG) and Vector Database
+Create a `.env` file in the `client/` directory with the server URL:
 
-Retrieval-Augmented Generation (RAG) was used to improve the quality of DOT code generations produced. First, images in the training dataset are passed through the VLM with a constant prompt. The prompt and image data are passed through the VLM (image is passed through the image encoder) to get the hidden state output of the model. The hidden state is averaged over all token positions to get a single embedding vector representation of size `d_model` for the image. This is then L2 normalized to get a final image embedding vector.
+```env
+VITE_SERVER_URL=https://<YOUR_SERVER_URL>
+```
 
-PostgreSQL and PGVector were used to store Graphviz code and embedding pairs for retrieval at inference-time. The top-K most similar Graphviz codes are retrived by a similarity search by Euclidean L2 vector distance between the provided embedding at inference-time and those stored in the vector DB. The top-K most similar Graphviz codes corresponding to the most similar embeddings were then provided as context to the Sketch2Graphviz model for full generation as few-shot prompting by adding them to the prompt passed to the model.
+Start the development server:
 
-Utilizing RAG through the vector similarity search significantly improved the quality of results through few-shot prompting, leading to noticable differences in the alignment of the target and generated Graphviz codes.
+```bash
+npm run dev
+```
 
-### Editing Generated Graphviz DOT Code
+The frontend will be available at `http://localhost:5173`.
 
-Sketch2Graphviz also allows users to continually improve generated Graphviz DOT code by requesting the model to make edits. Sketch2Graphviz can make rewrite and selective edits.
+### Docker Deployment (Backend)
 
-Rewrite edits prompt the language model with just the base Graphviz DOT code sample and a user edit request (no image) and ask it to apply the user's request to improve the code. The model regenerates all of the DOT code, applying the user's edit request. However, this does lead to some issues as the model can accidentally modify unrelated parts of the Graphviz code, hurting the response.
+The pre-built Docker image is available on DockerHub:
 
-Making selective edits utilizes a different methodology in which the base Graphviz DOT code is first split into statements by certain indicators: `'{'`, `'}'`, `';'`. The statements are then indexed, and joined back together with the indexes serving as numbers. The numbered graphviz code and the user's edit request are sent to the language model with a JSON schema detailing the format to write actions.
+```bash
+docker pull rishabsa/sketch2graphviz:latest
+```
+
+Or build from source:
+
+```bash
+cd model
+docker buildx build --platform linux/amd64 -t sketch2graphviz:latest .
+```
+
+### Runpod Deployment
+
+1. Create a pod with an appropriate GPU (~12-16 GB VRAM for 4-bit quantized, ~24 GB VRAM for 16-bit). An RTX A5000 (24 GB) works well for the 4-bit model.
+2. Use the **`rishabsa/sketch2graphviz:latest`** Docker image as the template
+3. Set the container disk and volume disk storage both to **~40 GB**
+4. Expose HTTP port **`8000`**
+5. Set an environment variable `HF_TOKEN` with a HuggingFace token that has read permissions
+6. Uncheck "Start Jupyter notebook"
+7. Deploy the pod on-demand
+
+> **Note:** You must have been granted access to `meta-llama/Llama-3.2-11B-Vision-Instruct` on HuggingFace as it is a gated model.
+
+On startup, the FastAPI server will download and load the base model into VRAM with 4-bit quantization, load the LoRA adapters from storage, and initialize the PostgreSQL + PGVector database with pre-computed embeddings.
+
+### Verify the Server
+
+```bash
+curl -X POST https://<RUNPOD_POD>-8000.proxy.runpod.net/graphviz_code_from_image \
+  -F "file=@model/testing_graphs/graph_6.png"
+```
+
+---
+
+## API Reference
+
+### `POST /graphviz_code_from_image`
+
+Generate Graphviz DOT code from an image.
+
+**Request:**
+
+| Parameter   | Type       | Location  | Description                                           |
+| ----------- | ---------- | --------- | ----------------------------------------------------- |
+| `file`      | File (PNG) | Form data | Image of a graph or flowchart                         |
+| `use_rag`   | Boolean    | Header    | Enable RAG retrieval (default: `true`)                |
+| `top_K_rag` | Integer    | Header    | Number of similar examples to retrieve (default: `5`) |
+
+**Response:** Plain text Graphviz DOT code
+
+**Example:**
+
+```bash
+curl -X POST https://<SERVER_URL>/graphviz_code_from_image \
+  -F "file=@image.png" \
+  -H "use_rag: true" \
+  -H "top_K_rag: 5"
+```
+
+### `POST /graphviz_code_edit`
+
+Edit existing Graphviz DOT code using natural language instructions.
+
+**Request Body (JSON):**
+
+| Field                   | Type    | Description                               |
+| ----------------------- | ------- | ----------------------------------------- |
+| `edit_text`             | String  | Natural language description of the edit  |
+| `graphviz_code`         | String  | Existing DOT code to modify               |
+| `use_selective_changes` | Boolean | Use selective edit mode (default: `true`) |
+
+**Response:** Updated Graphviz DOT code
+
+**Example:**
+
+```bash
+curl -X POST https://<SERVER_URL>/graphviz_code_edit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "edit_text": "change all node colors to lightblue",
+    "graphviz_code": "digraph { A -> B; B -> C; }",
+    "use_selective_changes": true
+  }'
+```
+
+---
+
+## Model Details
+
+### Base Model and Fine-Tuning
+
+| Parameter              | Value                                                                                          |
+| ---------------------- | ---------------------------------------------------------------------------------------------- |
+| Base Model             | `meta-llama/Llama-3.2-11B-Vision-Instruct` (11B parameters)                                    |
+| Fine-Tuning Method     | LoRA (Low-Rank Adaptation)                                                                     |
+| LoRA Rank              | 64                                                                                             |
+| LoRA Alpha             | 128                                                                                            |
+| LoRA Dropout           | 0.05                                                                                           |
+| Target Modules         | q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj, fc1, fc2, multi_modal_projector |
+| Training Quantization  | 16-bit                                                                                         |
+| Inference Quantization | 4-bit                                                                                          |
+
+### Training Configuration
+
+| Parameter                   | Value                                           |
+| --------------------------- | ----------------------------------------------- |
+| Epochs                      | 3                                               |
+| Batch Size                  | 1 (per GPU)                                     |
+| Gradient Accumulation Steps | 16 (effective batch size of 16)                 |
+| Optimizer                   | AdamW                                           |
+| Learning Rate               | 2e-4 with linear warmup (10% of training steps) |
+
+### Synthetic Data Generation
+
+Because no publicly available Graphviz datasets provide DOT code of sufficient quality, training data was synthesized using the OpenAI API (`gpt-4o-mini`). Specific graph types are generated with prompt suffixes that specify different node types, edge types, and attributes across batches. The datasets include:
+
+| Dataset         | Samples |
+| --------------- | ------- |
+| Simple graphs   | ~447    |
+| Standard graphs | ~700+   |
+| Complex graphs  | ~298    |
+
+### Retrieval-Augmented Generation (RAG)
+
+1. **Embedding:** Input images are passed through the VLM's vision encoder to extract hidden states. These are mean-pooled across token positions and L2-normalized to produce a 4096-dimensional embedding vector.
+2. **Storage:** Embeddings and their corresponding DOT code are stored in PostgreSQL with the PGVector extension.
+3. **Retrieval:** At inference time, the input image is embedded, and the top-K most similar embeddings are retrieved by Euclidean (L2) distance.
+4. **Prompting:** The DOT code corresponding to the retrieved embeddings is injected into the model's prompt as few-shot examples.
+
+### Editing Modes
+
+**Rewrite Edit:** The full DOT code and edit request are sent to the model, which regenerates the entire code with the requested changes applied.
+
+**Selective Edit:** The DOT code is split into indexed statements. The model outputs a JSON action plan:
 
 ```json
 {
-  "actions": [
-    {"command": "add", "idx": <int>, "content": "<DOT statement>"},
-    {"command": "edit", "idx": <int>, "content": "<DOT statement>"},
-    {"command": "delete", "idx": <int>}
-  ]
+	"actions": [
+		{ "command": "add", "idx": 3, "content": "A -> D [label=\"new edge\"];" },
+		{ "command": "edit", "idx": 5, "content": "B [shape=diamond];" },
+		{ "command": "delete", "idx": 7 }
+	]
 }
 ```
 
-The language model outputs a set of JSON actions to follow to make the isolated/selective changes. The model is given the option to add, edit, or delete statements following the user's request.
-Once the JSON is outputted, it is parsed and iterated through too validate and apply each of the selective actions to the base Graphviz DOT code.
+Each action is validated and applied to the original code, allowing precise modifications without regenerating unrelated parts.
+
+---
+
+## Evaluation Results
+
+### Test Loss by Epoch
+
+| Epoch | Test Loss |
+| ----- | --------- |
+| 1     | 0.1974    |
+| 2     | 0.1466    |
+| 3     | 0.1296    |
+
+### Final Model Evaluation (Epoch 3, No RAG)
+
+| Metric                 | Value            |
+| ---------------------- | ---------------- |
+| Render Success Rate    | 97.96% (914/933) |
+| Mean SSIM              | 0.9306           |
+| Mean LPIPS             | 0.1352           |
+| Graph Isomorphism Rate | 43.52%           |
+| Node F1                | 0.5453           |
+| Edge F1                | 0.4974           |
+| Node Attribute F1      | 0.4879           |
+| Edge Attribute F1      | 0.4703           |
+
+### LLM-as-a-Judge Accuracy
+
+| Configuration | Correct | Total | Accuracy   |
+| ------------- | ------- | ----- | ---------- |
+| Without RAG   | 804     | 933   | **86.17%** |
+| With RAG      | 831     | 933   | **89.07%** |
+
+RAG improves LLM-as-Judge accuracy by **2.90%**, demonstrating the value of few-shot prompting with retrieved examples.
