@@ -76,7 +76,9 @@ Sketch2Graphviz/
 ├── model/                           # Python backend and ML model
 │   ├── main.py                      # FastAPI server entry point
 │   ├── llm_judge.py                 # LLM-based evaluation (Azure AI)
-│   ├── requirements.txt             # Python dependencies
+│   ├── pyproject.toml               # Python project + dependencies (uv)
+│   ├── uv.lock                      # Locked, reproducible dependency graph
+│   ├── .python-version              # Pinned Python version for uv
 │   ├── Dockerfile                   # Full-stack Docker image
 │   ├── scripts/
 │   │   ├── model.py                 # Sketch2GraphvizVLM model class
@@ -115,8 +117,8 @@ Sketch2Graphviz/
 ### Prerequisites
 
 - **Node.js** (v18+) and **npm** for the frontend
-- **Python 3.10+** for the backend
-- **Docker** for containerized deployment
+- **[uv](https://docs.astral.sh/uv/)** (0.5+) for Python dependency and environment management — uv manages Python itself (3.13, pinned via `.python-version`), so you don't need a system Python install
+- **Docker** for containerized deployment (NVIDIA driver with CUDA 13 support on the host if running the GPU image)
 - A **HuggingFace** account with access to the gated [meta-llama/Llama-3.2-11B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct) model
 - A GPU with **12-16 GB VRAM** (4-bit quantized model) or **24 GB VRAM** (16-bit quantized model)
 
@@ -147,6 +149,40 @@ npm run dev
 ```
 
 The frontend will be available at `http://localhost:5173`.
+
+### Backend Setup (Local, uv)
+
+All backend Python dependencies are managed with [uv](https://docs.astral.sh/uv/) via `model/pyproject.toml` and the locked `model/uv.lock`. Install uv first:
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then sync the environment (uv will download the pinned Python version and resolve every dependency from the lockfile):
+
+```bash
+cd model
+uv sync --frozen
+```
+
+This creates `model/.venv/`. Run any backend command through uv so it uses the locked environment:
+
+```bash
+uv run uvicorn main:app --host 0.0.0.0 --port 8000
+uv run python scripts/inference.py
+uv run python llm_judge.py
+```
+
+To add or upgrade a dependency:
+
+```bash
+uv add <package>              # add a new dependency
+uv lock --upgrade-package <package>   # bump a single package
+uv sync                       # re-apply the resolved state
+```
+
+> Note: The backend also requires a running PostgreSQL instance with the `pgvector` extension for RAG. The Docker image below provisions this automatically; for local runs you'll need to set it up yourself.
 
 ### Docker Deployment (Backend)
 
