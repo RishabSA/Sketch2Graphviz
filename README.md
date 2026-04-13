@@ -152,12 +152,7 @@ The frontend will be available at `http://localhost:5173`.
 
 ### Backend Setup (Local, uv)
 
-All backend Python dependencies are managed with [uv](https://docs.astral.sh/uv/) via `model/pyproject.toml` and the locked `model/uv.lock`. Install uv first:
-
-```bash
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+All backend Python dependencies are managed with [uv](https://docs.astral.sh/uv/) via `model/pyproject.toml` and the locked `model/uv.lock`.
 
 Then sync the environment (uv will download the pinned Python version and resolve every dependency from the lockfile):
 
@@ -172,14 +167,6 @@ This creates `model/.venv/`. Run any backend command through uv so it uses the l
 uv run uvicorn main:app --host 0.0.0.0 --port 8000
 uv run python scripts/inference.py
 uv run python llm_judge.py
-```
-
-To add or upgrade a dependency:
-
-```bash
-uv add <package>              # add a new dependency
-uv lock --upgrade-package <package>   # bump a single package
-uv sync                       # re-apply the resolved state
 ```
 
 > Note: The backend also requires a running PostgreSQL instance with the `pgvector` extension for RAG. The Docker image below provisions this automatically; for local runs you'll need to set it up yourself.
