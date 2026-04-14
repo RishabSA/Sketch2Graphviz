@@ -96,6 +96,9 @@ Sketch2Graphviz/
 │   │   ├── epoch_1_vlm_lora/
 │   │   ├── epoch_2_vlm_lora/
 │   │   └── epoch_3_vlm_lora/
+│   ├── tests/                       # Pytest unit tests
+│   │   ├── test_selective_edit.py   # Tests for selective edit pipeline
+│   │   └── test_eval.py             # Tests for graph evaluation metrics
 │   ├── testing_graphs/              # Test images for evaluation
 │   ├── outputs/                     # Model output artifacts
 │   ├── postgreSQL_data/             # PostgreSQL database dump
@@ -170,6 +173,16 @@ uv run python llm_judge.py
 ```
 
 > Note: The backend also requires a running PostgreSQL instance with the `pgvector` extension for RAG. The Docker image below provisions this automatically; for local runs you'll need to set it up yourself.
+
+### Running Unit Tests
+
+The backend includes a Pytest unit test cases under `model/tests/` covering the selective edit pipeline (`scripts/selective_edit.py`) and the graph evaluation metrics (`scripts/eval.py`).
+
+Run the full test cases:
+
+```bash
+uv run pytest tests/
+```
 
 ### Docker Deployment (Backend)
 

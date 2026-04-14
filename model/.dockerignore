@@ -1,5 +1,6 @@
 testing_graphs
 Sketch2Graphviz.ipynb
+tests/
 
 .venv
 __pycache__
