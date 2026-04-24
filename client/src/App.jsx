@@ -1,54 +1,36 @@
 import * as Viz from "@viz-js/viz";
 import React, { useEffect, useRef, useState } from "react";
-import {
-	FaArrowRight,
-	FaCheck,
-	FaCode,
-	FaCopy,
-	FaDesktop,
-	FaDownload,
-	FaGithub,
-	FaGlobe,
-	FaImage,
-	FaInfo,
-	FaLinkedin,
-	FaMoon,
-	FaPaperPlane,
-	FaSun,
-} from "react-icons/fa";
-import { MdOutlineClose } from "react-icons/md";
+import { FaCode, FaImage, FaMagic, FaPaperPlane } from "react-icons/fa";
 import { Bounce, ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import {
 	requestGraphvizCodeEdit,
 	requestGraphvizCodeFromImage,
 } from "./api/server";
+import { CodePanel } from "./components/CodePanel";
 import { GraphSketchpad } from "./components/GraphSketchpad";
+import { Header } from "./components/Header";
+import { PreviewPanel } from "./components/PreviewPanel";
+
+const ViewTabs = [
+	{ id: "code", label: "Code", Icon: FaCode },
+	{ id: "preview", label: "Preview", Icon: FaImage },
+];
 
 function App() {
 	const [theme, setTheme] = useState(() => {
 		return localStorage.getItem("theme") || "Light";
 	});
-	const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
 	const [loading, setLoading] = useState(false);
-	const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
 	const [graphvizCode, setGraphvizCode] = useState("");
 	const [editText, setEditText] = useState("");
 	const [validGraphvizImage, setValidGraphvizImage] = useState(false);
-	const [copied, setCopied] = useState(false);
 	const [error, setError] = useState(null);
 	const [useSelectiveChanges, setUseSelectiveChanges] = useState(true);
+	const [activeView, setActiveView] = useState("code");
 
 	const graphvizContainerRef = useRef(null);
-	const copiedTimerRef = useRef(null);
 
-	useEffect(() => {
-		return () => {
-			if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
-		};
-	}, []);
-
-	// Apply the theme whenever it changes
 	useEffect(() => {
 		const root = document.documentElement;
 
@@ -57,7 +39,6 @@ function App() {
 		} else if (theme === "Light") {
 			root.classList.remove("dark");
 		} else {
-			// System
 			if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
 				root.classList.add("dark");
 			} else {
@@ -68,7 +49,6 @@ function App() {
 		localStorage.setItem("theme", theme);
 	}, [theme]);
 
-	// Prevent background scroll while loading
 	useEffect(() => {
 		if (loading) {
 			document.body.style.overflow = "hidden";
@@ -79,6 +59,8 @@ function App() {
 	}, [loading]);
 
 	useEffect(() => {
+		if (activeView !== "preview") return;
+
 		let cancelled = false;
 
 		const updateGraphPreview = async () => {
@@ -113,28 +95,7 @@ function App() {
 		return () => {
 			cancelled = true;
 		};
-	}, [graphvizCode]);
-
-	const handleCopyGraphvizCode = async () => {
-		try {
-			await navigator.clipboard.writeText(graphvizCode);
-
-			setCopied(true);
-			if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
-
-			copiedTimerRef.current = setTimeout(() => {
-				setCopied(false);
-				copiedTimerRef.current = null;
-			}, 2000);
-		} catch (err) {
-			toast.error(
-				`An unexpected error occurred while attempting to copy text: ${err}`,
-			);
-			console.error(
-				`An unexpected error occurred while attempting to copy text: ${err}`,
-			);
-		}
-	};
+	}, [graphvizCode, activeView]);
 
 	const convertToGraphviz = async (pngBlob, useRag) => {
 		try {
@@ -142,12 +103,13 @@ function App() {
 
 			const dot = await requestGraphvizCodeFromImage(pngBlob, useRag, 5);
 			setGraphvizCode(dot);
+			setActiveView("preview");
 		} catch (e) {
 			toast.error(
-				`An unexpected error occurred while attempting to convert the sketch: ${e}.`,
+				`An unexpected error occurred while converting the sketch: ${e}.`,
 			);
 			console.error(
-				`An unexpected error occurred while attempting to convert the sketch: ${e}.`,
+				`An unexpected error occurred while converting the sketch: ${e}.`,
 			);
 		} finally {
 			setLoading(false);
@@ -155,6 +117,8 @@ function App() {
 	};
 
 	const editGraphvizCode = async () => {
+		if (!editText.trim()) return;
+
 		try {
 			setLoading(true);
 
@@ -164,12 +128,13 @@ function App() {
 				useSelectiveChanges,
 			);
 			setGraphvizCode(dot);
+			setEditText("");
 		} catch (e) {
 			toast.error(
-				`An unexpected error occurred while attempting to make an edit to the Graphviz DOT code: ${e}.`,
+				`An unexpected error occurred while editing the Graphviz DOT code: ${e}.`,
 			);
 			console.error(
-				`An unexpected error occurred while attempting to make an edit to the Graphviz DOT code: ${e}.`,
+				`An unexpected error occurred while editing the Graphviz DOT code: ${e}.`,
 			);
 		} finally {
 			setLoading(false);
@@ -199,17 +164,23 @@ function App() {
 		URL.revokeObjectURL(url);
 	};
 
+	const hasCode = Boolean(graphvizCode);
+
 	return (
-		<div className="mb-8">
+		<div className="min-h-dvh bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
 			{loading && (
 				<div
-					className="fixed inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-xs"
+					className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/60 backdrop-blur-sm"
 					role="dialog"
 					aria-modal="true"
-					aria-label="Loading">
-					<div role="status" aria-live="polite" aria-busy="true">
+					aria-label="Processing">
+					<div
+						role="status"
+						aria-live="polite"
+						aria-busy="true"
+						className="flex flex-col items-center">
 						<svg
-							className="inline w-20 h-20 text-neutral-200 animate-spin dark:text-neutral-600 fill-blue-600"
+							className="h-24 w-24 animate-spin text-neutral-200 dark:text-neutral-700 fill-blue-600"
 							viewBox="0 0 100 101"
 							fill="none"
 							xmlns="http://www.w3.org/2000/svg">
@@ -226,308 +197,193 @@ function App() {
 					</div>
 				</div>
 			)}
-			<div
-				tabIndex="-1"
-				onClick={() => setIsInfoModalOpen(false)}
-				className={`fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-300 ${
-					isInfoModalOpen
-						? "bg-black/50 pointer-events-auto opacity-100"
-						: "bg-black/0 pointer-events-none opacity-0"
-				}`}>
-				<div
-					onClick={e => e.stopPropagation()}
-					className={`relative p-4 w-full max-w-xs md:max-w-2xl max-h-full bg-white rounded-lg shadow-sm dark:bg-neutral-800 transform transition-transform duration-300 ${
-						isInfoModalOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
-					}`}>
-					<div className="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-neutral-600 border-neutral-200">
-						<h3 className="flex items-center text-xl font-semibold text-neutral-900 dark:text-neutral-300">
-							<FaInfo
-								size={20}
-								className="stroke-current text-neutral-500 dark:text-neutral-300 mr-4"
-							/>
-							Info
-						</h3>
-						<button
-							aria-label="Close"
-							className="cursor-pointer text-neutral-400 bg-transparent hover:bg-neutral-200 hover:text-neutral-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-neutral-600 dark:hover:text-white"
-							onClick={() => setIsInfoModalOpen(false)}>
-							<MdOutlineClose
-								size={24}
-								className="stroke-current text-neutral-500 dark:text-neutral-400"
-							/>
-						</button>
-					</div>
-					<div className="p-4 md:p-5 space-y-4">
-						<p className="text-base leading-relaxed text-neutral-500 dark:text-neutral-400">
-							Sketch2Graphviz allows you to convert sketches or images of graphs
-							and flowcharts to proper Graphviz code using a LoRA fine-tuned
-							Llama 3.2 11B Vision and Retrieval-Augmented Generation (RAG)
-							through a vector database built with PostgreSQL and PGVector,
-							making a previously tedious and manual task fast, effortless, and
-							automated.
-						</p>
-						<p className="text-base leading-relaxed text-neutral-500 dark:text-neutral-400">
-							See my personal links below to learn more about me and my work or
-							get in contact with me!
-						</p>
-						<ul className="space-y-4 mb-4">
-							<li>
-								<label
-									onClick={() =>
-										window.open(
-											"https://www.linkedin.com/in/rishab-alagharu",
-											"_blank",
-										)
-									}
-									className="transition-all inline-flex items-center justify-between w-full px-4 py-2 text-neutral-900 bg-white border border-neutral-200 rounded-lg cursor-pointer dark:hover:text-neutral-300 dark:border-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 dark:text-white dark:bg-neutral-800 dark:hover:bg-neutral-700">
-									<div className="flex items-center space-x-4">
-										<FaLinkedin
-											size={24}
-											className="stroke-current text-blue-700 dark:text-blue-500"
-										/>
-										<div className="w-full text-lg font-semibold">LinkedIn</div>
-									</div>
-									<FaArrowRight
-										size={20}
-										className="stroke-current text-neutral-500 dark:text-neutral-400"
-									/>
-								</label>
-							</li>
-							<li>
-								<label
-									onClick={() =>
-										window.open("https://rishabalagharu.com/", "_blank")
-									}
-									className="transition-all inline-flex items-center justify-between w-full px-4 py-2 text-neutral-900 bg-white border border-neutral-200 rounded-lg cursor-pointer dark:hover:text-neutral-300 dark:border-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 dark:text-white dark:bg-neutral-800 dark:hover:bg-neutral-700">
-									<div className="flex items-center space-x-4">
-										<FaGlobe
-											size={24}
-											className="stroke-current text-green-500 dark:text-green-400"
-										/>
-										<div className="w-full text-lg font-semibold">
-											Personal Website
-										</div>
-									</div>
-									<FaArrowRight
-										size={20}
-										className="stroke-current text-neutral-500 dark:text-neutral-400"
-									/>
-								</label>
-							</li>
-							<li>
-								<label
-									onClick={() =>
-										window.open("https://github.com/RishabSA", "_blank")
-									}
-									className="transition-all inline-flex items-center justify-between w-full px-4 py-2 text-neutral-900 bg-white border border-neutral-200 rounded-lg cursor-pointer dark:hover:text-neutral-300 dark:border-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 dark:text-white dark:bg-neutral-800 dark:hover:bg-neutral-700">
-									<div className="flex items-center space-x-4">
-										<FaGithub
-											size={24}
-											className="stroke-current text-neutral-800 dark:text-neutral-300"
-										/>
 
-										<div className="w-full text-lg font-semibold">Github</div>
-									</div>
-									<FaArrowRight
-										size={20}
-										className="stroke-current text-neutral-500 dark:text-neutral-400"
-									/>
-								</label>
-							</li>
-						</ul>
-					</div>
+			<ToastContainer
+				position="top-right"
+				autoClose={5000}
+				hideProgressBar={false}
+				newestOnTop={false}
+				closeOnClick={false}
+				rtl={false}
+				pauseOnFocusLoss
+				draggable={false}
+				pauseOnHover
+				theme={theme === "Dark" ? "dark" : "colored"}
+				transition={Bounce}
+			/>
+
+			<Header theme={theme} setTheme={setTheme} />
+
+			<main className="max-w-7xl mx-auto px-4 md:px-8 py-6">
+				<div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+					<section
+						aria-label="Sketchpad"
+						className="flex flex-col gap-4 min-w-0">
+						<div className="flex flex-col gap-1">
+							<h2 className="text-xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+								Sketch your graph
+							</h2>
+							<p className="text-sm text-neutral-500 dark:text-neutral-400">
+								Draw nodes, edges, and labels - or import an image.
+							</p>
+						</div>
+
+						<GraphSketchpad convertToGraphviz={convertToGraphviz} />
+					</section>
+
+					<section aria-label="Output" className="flex flex-col gap-4 min-w-0">
+						<div className="flex flex-col gap-1">
+							<h2 className="text-xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+								Review and refine
+							</h2>
+							<p className="text-sm text-neutral-500 dark:text-neutral-400">
+								Inspect the rendered graph, edit the{" "}
+								<a
+									className="font-bold text-blue-500 underline"
+									href="https://graphviz.org/">
+									Graphviz DOT
+								</a>{" "}
+								code, or request AI edits.
+							</p>
+						</div>
+
+						<div className="flex items-center justify-between gap-2">
+							<TabSwitcher
+								tabs={ViewTabs}
+								active={activeView}
+								onChange={setActiveView}
+							/>
+						</div>
+
+						<div className="relative w-full" style={{ aspectRatio: "1 / 1" }}>
+							{activeView === "preview" ? (
+								<PreviewPanel
+									containerRef={graphvizContainerRef}
+									validGraphvizImage={validGraphvizImage}
+									onDownload={downloadGraphSvg}
+									hasCode={hasCode}
+								/>
+							) : (
+								<CodePanel
+									graphvizCode={graphvizCode}
+									setGraphvizCode={setGraphvizCode}
+									error={error}
+								/>
+							)}
+						</div>
+
+						<EditPrompt
+							editText={editText}
+							setEditText={setEditText}
+							useSelectiveChanges={useSelectiveChanges}
+							setUseSelectiveChanges={setUseSelectiveChanges}
+							onSubmit={editGraphvizCode}
+							disabled={!hasCode}
+						/>
+					</section>
 				</div>
+			</main>
+		</div>
+	);
+}
+
+const TabSwitcher = ({ tabs, active, onChange }) => (
+	<div
+		role="tablist"
+		className="inline-flex rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 p-1">
+		{tabs.map(tab => {
+			const isActive = tab.id === active;
+			return (
+				<button
+					key={tab.id}
+					role="tab"
+					aria-selected={isActive}
+					type="button"
+					onClick={() => onChange(tab.id)}
+					className={`cursor-pointer inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+						isActive
+							? "bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 shadow-sm"
+							: "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+					}`}>
+					<tab.Icon size={12} />
+					{tab.label}
+				</button>
+			);
+		})}
+	</div>
+);
+
+const EditPrompt = ({
+	editText,
+	setEditText,
+	useSelectiveChanges,
+	setUseSelectiveChanges,
+	onSubmit,
+	disabled,
+}) => {
+	const canSubmit = !disabled && editText.trim().length > 0;
+
+	const onKeyDown = e => {
+		if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canSubmit) {
+			e.preventDefault();
+			onSubmit();
+		}
+	};
+
+	return (
+		<div className="flex flex-col gap-2 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-4 focus-within:border-blue-400 dark:focus-within:border-blue-500/60 transition-colors">
+			<div className="flex items-start gap-4">
+				<FaMagic
+					size={14}
+					className="mt-2 ml-1 flex-none text-blue-500 dark:text-blue-400"
+				/>
+				<textarea
+					value={editText}
+					onChange={e => setEditText(e.target.value)}
+					onKeyDown={onKeyDown}
+					disabled={disabled}
+					rows={2}
+					placeholder={
+						disabled
+							? "Generate code first to request edits…"
+							: "Ask for changes — e.g. 'Add a node called Login between Start and Home'"
+					}
+					className="flex-1 resize-none bg-transparent py-1.5 text-sm text-neutral-800 dark:text-neutral-200 placeholder:text-neutral-400 dark:placeholder:text-neutral-600 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+				/>
 			</div>
 
-			<div className="min-h-dvh bg-neutral-100 dark:bg-neutral-900 flex flex-col px-4 sm:px-8 py-2">
-				<ToastContainer
-					position="top-right"
-					autoClose={5000}
-					hideProgressBar={false}
-					newestOnTop={false}
-					closeOnClick={false}
-					rtl={false}
-					pauseOnFocusLoss
-					draggable={false}
-					pauseOnHover
-					theme="colored"
-					transition={Bounce}
-				/>
+			<div className="flex items-center justify-between gap-2 pt-2 border-t-2 border-neutral-100 dark:border-neutral-900">
+				<label
+					className={`inline-flex items-center gap-2 text-sm font-medium text-neutral-600 dark:text-neutral-400 ${
+						disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+					}`}
+					title="Apply targeted edits instead of regenerating the whole graph">
+					<input
+						type="checkbox"
+						checked={useSelectiveChanges}
+						onChange={e => setUseSelectiveChanges(e.target.checked)}
+						disabled={disabled}
+						className="h-4 w-4 accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
+					/>
+					Selective edit
+				</label>
 
-				<div className="mt-4 mb-8 md:flex md:space-x-20 items-center justify-center">
-					<div className="flex items-center space-x-4 justify-center">
-						<img
-							src="/assets/icon.svg"
-							alt="Sketch2Graphviz Icon"
-							className="h-12 w-auto"
-						/>
-						<h1 className="text-3xl font-semibold text-neutral-800 dark:text-neutral-200">
-							Sketch2Graphviz
-						</h1>
-					</div>
-
-					<div className="flex items-center space-x-4 mt-5 md:mt-0 justify-center">
-						<div>
-							<button
-								onClick={() => setThemeDropdownOpen(o => !o)}
-								className="cursor-pointer text-neutral-700 dark:text-neutral-300 bg-white dark:bg-neutral-900 border-2 border-neutral-200 dark:border-neutral-600 hover:bg-neutral-200 dark:hover:bg-neutral-800 font-medium rounded-lg text-sm px-5 py-2.5 inline-flex items-center">
-								{theme === "Light" && <FaSun size={16} className="mr-2" />}
-								{theme === "Dark" && <FaMoon size={16} className="mr-2" />}
-								{theme === "System" && <FaDesktop size={16} className="mr-2" />}
-								<span>{theme}</span>
-							</button>
-							{themeDropdownOpen && (
-								<div className="transition-all duration-300 ease-in-out absolute z-10 bg-white shadow-md dark:bg-neutral-800 rounded-lg">
-									<ul className="py-2 text-sm text-neutral-600 dark:text-neutral-400">
-										<li>
-											<button
-												onClick={() => {
-													setTheme("Light");
-													setThemeDropdownOpen(false);
-												}}
-												className="cursor-pointer w-full px-4 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center">
-												<FaSun size={16} className="mr-2" />
-												Light
-											</button>
-										</li>
-										<li>
-											<button
-												onClick={() => {
-													setTheme("Dark");
-													setThemeDropdownOpen(false);
-												}}
-												className="cursor-pointer w-full px-4 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center">
-												<FaMoon size={16} className="mr-2" />
-												Dark
-											</button>
-										</li>
-										<li>
-											<button
-												onClick={() => {
-													setTheme("System");
-													setThemeDropdownOpen(false);
-												}}
-												className="cursor-pointer w-full px-4 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center">
-												<FaDesktop size={16} className="mr-2" />
-												System
-											</button>
-										</li>
-									</ul>
-								</div>
-							)}
-						</div>
-						<button
-							aria-label="Open information panel"
-							title="Info"
-							className="cursor-pointer h-10 w-10 text-neutral-500 dark:text-neutral-300 bg-white dark:bg-neutral-900 border-2 border-neutral-200 dark:border-neutral-600 hover:bg-neutral-200 dark:hover:bg-neutral-800 flex items-center justify-center rounded-lg transition-colors"
-							onClick={() => setIsInfoModalOpen(true)}>
-							<div className="flex items-center">
-								<FaInfo
-									size={16}
-									className="stroke-current text-neutral-500 dark:text-neutral-300"
-								/>
-							</div>
-						</button>
-					</div>
-				</div>
-
-				<div className="w-full flex-1 min-h-0 flex flex-col gap-4 bg-neutral-100 dark:bg-neutral-900 rounded-xl text-neutral-900 dark:text-neutral-300 md:flex-row md:items-stretch">
-					<GraphSketchpad convertToGraphviz={convertToGraphviz} />
-					<div className="w-full h-full md:flex-1 md:w-1/3 flex flex-col min-h-0 mt-6 md:mt-0 gap-4 ">
-						<h2 className="flex items-center gap-2 text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-							<FaCode size={16} />
-							Generated Graphviz Code
-						</h2>
-
-						<div
-							className="relative w-full overflow-hidden rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900"
-							style={{ aspectRatio: "1 / 1" }}>
-							<textarea
-								className="h-full w-full font-mono p-3 text-sm resize-none bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-neutral-50 disabled:dark:bg-neutral-800 disabled:hover:cursor-not-allowed"
-								value={graphvizCode}
-								onChange={e => setGraphvizCode(e.target.value)}
-								spellCheck={false}
-								disabled={!graphvizCode}
-								placeholder="Generated Graphviz DOT code will appear here..."
-							/>
-							{error && (
-								<div className="absolute left-3 bottom-3">
-									<p className="text-xs text-red-500 bg-white/90 dark:bg-neutral-900/90 px-2 py-1 rounded-md border border-red-200 dark:border-red-900">
-										Graphviz Error: {error}
-									</p>
-								</div>
-							)}
-						</div>
-
-						<button
-							type="button"
-							onClick={handleCopyGraphvizCode}
-							disabled={!graphvizCode}
-							className="w-fit cursor-pointer flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700 disabled:bg-neutral-300 disabled:dark:bg-neutral-800 disabled:dark:text-neutral-500 disabled:hover:cursor-not-allowed">
-							{copied ? <FaCheck size={16} /> : <FaCopy size={16} />}
-							{copied ? "Copied!" : "Copy Graphviz Code"}
-						</button>
-
-						<div className="w-full h-50 overflow-hidden rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-							<textarea
-								className="h-full w-full p-3 text-sm resize-none bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-neutral-50 disabled:dark:bg-neutral-800 disabled:hover:cursor-not-allowed"
-								value={editText}
-								onChange={e => setEditText(e.target.value)}
-								placeholder="Ask Sketch2Graphviz to make edits..."
-								disabled={!graphvizCode}
-							/>
-						</div>
-						<div className="w-full max-w-md flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-							<label className="flex items-center gap-3 rounded-xl border-2 border-neutral-200 bg-white p-4 text-xs font-semibold text-neutral-800 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100">
-								<input
-									type="checkbox"
-									checked={useSelectiveChanges}
-									onChange={e => setUseSelectiveChanges(e.target.checked)}
-									className="h-6 w-6 accent-blue-600 hover:cursor-pointer"
-								/>
-								Selective Changes
-							</label>
-							<button
-								type="button"
-								className="flex-1 cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-blue-600 p-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700 disabled:bg-neutral-300 disabled:dark:bg-neutral-800 disabled:dark:text-neutral-500 disabled:hover:cursor-not-allowed"
-								disabled={!editText}
-								onClick={async () => {
-									await editGraphvizCode();
-								}}>
-								<FaPaperPlane size={16} />
-								Request Edit
-							</button>
-						</div>
-					</div>
-
-					<div className="w-full h-full md:flex-1 md:w-1/3 flex flex-col min-h-0 mt-6 md:mt-0 gap-4">
-						<h2 className="flex items-center gap-2 text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-							<FaImage size={16} />
-							Graphviz Preview
-						</h2>
-
-						<div
-							className="w-full overflow-auto rounded-xl border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3"
-							style={{ aspectRatio: "1 / 1" }}>
-							<div
-								ref={graphvizContainerRef}
-								className="w-full h-full flex items-center justify-center [&>svg]:w-7/8 [&>svg]:h-auto [&>svg]:max-h-7/8"
-							/>
-						</div>
-
-						<button
-							type="button"
-							onClick={downloadGraphSvg}
-							disabled={!validGraphvizImage}
-							className="w-fit cursor-pointer flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-4 text-sm font-bold text-neutral-100 transition-all hover:bg-blue-700 disabled:bg-neutral-300 disabled:dark:bg-neutral-800 disabled:dark:text-neutral-500 disabled:hover:cursor-not-allowed">
-							<FaDownload size={16} />
-							Download Graphviz Graph
-						</button>
-					</div>
+				<div className="flex items-center gap-4">
+					<span className="hidden sm:inline text-xs text-neutral-400 dark:text-neutral-600">
+						⌘↵
+					</span>
+					<button
+						type="button"
+						onClick={onSubmit}
+						disabled={!canSubmit}
+						className="cursor-pointer inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:bg-neutral-200 disabled:text-neutral-400 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-600 disabled:hover:cursor-not-allowed">
+						<FaPaperPlane size={11} />
+						Send
+					</button>
 				</div>
 			</div>
 		</div>
 	);
-}
+};
 
 export default App;

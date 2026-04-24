@@ -8,6 +8,8 @@
   <strong>Convert hand-drawn sketches and images of graphs into proper Graphviz DOT code using a fine-tuned Vision-Language Model with Retrieval-Augmented Generation.</strong>
 </p>
 
+![Sketch2Graphviz Demo](resources/Sketch2GraphvizDemo.gif)
+
 <p align="center">
   <a href="#features">Features</a> &bull;
   <a href="#demos">Demos</a> &bull;
@@ -22,9 +24,9 @@
 
 ## Demos
 
-<img src="resources/complex_graph_1_demo.png" alt="Sketch2Graphviz Demo on a Complex Graph" width="49%"/> <img src="resources/sketch_demo.png" alt="Sketch2Graphviz Demo on a Sketch of a Diagram" width="49%"/>
+<img src="resources/complex_graph_demo_code.png" alt="Sketch2Graphviz Demo on a Complex Graph with Code" width="49%"/> <img src="resources/complex_graph_demo_preview.png" alt="Sketch2Graphviz Demo on a Complex Graph with Preview" width="49%"/>
 
-<img src="resources/architecture_demo.png" alt="Sketch2Graphviz Architecture Diagram Demo" width="49%"/> <img src="resources/flowchart_demo.png" alt="Sketch2Graphviz Flowchart Demo with an Edit" width="49%"/>
+<img src="resources/architecture_demo_code.png" alt="Sketch2Graphviz Demo on a Architecture Diagram with Code" width="49%"/> <img src="resources/architecture_demo_preview.png" alt="Sketch2Graphviz Demo on a Architecture Diagram with Preview" width="49%"/>
 
 ---
 
